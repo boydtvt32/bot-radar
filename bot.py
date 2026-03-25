@@ -12,8 +12,7 @@ def home():
     return "Bot Radar DCA đang thức và hoạt động 24/7!"
 
 def run_server():
-    # Render yêu cầu port mặc định, ta dùng 8080 hoặc 10000
-    app.run(host='0.0.0.0', port=10000)
+    app.run(host='0.0.0.0', port=10000, use_reloader=False)
 
 # --- PHẦN 2: THÔNG SỐ CỦA BẠN ---
 API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjM3NWFiODUxLWJkN2ItNGRjYy05OWU4LTY3YWExZTY5NjVmNyIsIm9yZ0lkIjoiNTA2NzE3IiwidXNlcklkIjoiNTIxMzgxIiwidHlwZUlkIjoiZTkzYzUwZjctOGI2ZC00ZDkyLTk4MDItMGIyNDllMTUzMzNiIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQyNTkyNjEsImV4cCI6NDkzMDAxOTI2MX0.-ERcEVFm28TLwIr5udsgMWBAvaUaHf5cf5Qd0vLzb18'
@@ -26,11 +25,11 @@ def send_telegram_alert(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
     try:
-        # Nhận kết quả từ Telegram và in ra màn hình Log
-        response = requests.post(url, data=data)
-        print("Trạng thái gửi Telegram:", response.text)
+        res = requests.post(url, data=data)
+        # In thẳng trạng thái phản hồi của Telegram ra màn hình (flush=True ép log hiện ngay)
+        print("Trạng thái gửi Telegram:", res.text, flush=True)
     except Exception as e:
-        print("Lỗi kết nối khi gửi Telegram:", e)
+        print("Lỗi kết nối khi gửi Telegram:", e, flush=True)
 
 # --- PHẦN 3: LOGIC BOT CHÍNH ---
 def run_bot():
@@ -39,11 +38,16 @@ def run_bot():
     headers = {"accept": "application/json", "X-API-Key": API_KEY}
     alerted_wallets = set()
 
+    # Dòng này sẽ in ra màn hình Log của Render
+    print("🚀 Bot Radar Đám Mây đã khởi động! Đang theo dõi token 4...", flush=True)
+    # Dòng này gửi về Telegram
     send_telegram_alert("🚀 <b>Bot Radar Đám Mây đã khởi động!</b> Đang theo dõi token 4...")
 
     while True:
         try:
+            print(f"\n[{time.strftime('%H:%M:%S')}] Đang quét dữ liệu mới...", flush=True)
             response = requests.get(url, params=params, headers=headers)
+            
             if response.status_code == 200:
                 data = response.json()
                 buy_history = defaultdict(lambda: {"count": 0, "total_amount": 0.0})
@@ -55,8 +59,11 @@ def run_bot():
                         buy_history[buyer_wallet]["count"] += 1
                         buy_history[buyer_wallet]["total_amount"] += value
 
+                found = False
                 for wallet, info in buy_history.items():
                     if info["count"] > 1 and wallet not in alerted_wallets:
+                        found = True
+                        print(f"🚨 Phát hiện cá mập: {wallet} - Đang gửi Telegram...", flush=True)
                         alert_msg = (
                             f"🚨 <b>PHÁT HIỆN CÁ MẬP DCA</b> 🚨\n\n"
                             f"💳 <b>Ví:</b> <code>{wallet}</code>\n"
@@ -66,13 +73,20 @@ def run_bot():
                         )
                         send_telegram_alert(alert_msg)
                         alerted_wallets.add(wallet)
-        except:
-            pass
+                
+                if not found:
+                    print("Chưa có cá mập mới. Đang ngủ 5 phút...", flush=True)
+            else:
+                print("Lỗi API Moralis:", response.status_code, response.text, flush=True)
+        except Exception as e:
+            print("Lỗi hệ thống Bot:", e, flush=True)
             
         time.sleep(300) # Đợi 5 phút
 
 # --- KÍCH HOẠT CHẠY SONG SONG CẢ 2 ---
 if __name__ == "__main__":
-    t = Thread(target=run_server)
+    # Đảo lại cấu trúc một chút để Server và Bot chạy ổn định hơn trên Linux
+    t = Thread(target=run_bot)
+    t.daemon = True
     t.start()
-    run_bot()
+    run_server()
