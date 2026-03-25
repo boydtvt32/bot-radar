@@ -50,7 +50,7 @@ user_state = {}
 # --- TỪ ĐIỂN ĐA NGÔN NGỮ ---
 TEXTS = {
     "vi": {
-        "start": "🚀 <b>Hệ Thống Đã Được Cập Nhật Đa Ngôn Ngữ!</b>\nGõ /help để trải nghiệm.",
+        "start": "🚀 <b>Hệ Thống Đã Được Cập Nhật Chống Treo Toàn Diện!</b>\nGõ /help để trải nghiệm.",
         "timeout": "⏳ <b>Quá 5 phút không phản hồi!</b>\nĐã tự động hủy tác vụ đang làm dở.",
         "choose_chain": "👇 <b>BƯỚC 1/4:</b> Chọn Mạng lưới (Chain):",
         "chain_selected": "✅ Đã chọn mạng: <b>{}</b>\n\n📝 BƯỚC 2/4: Nhập <b>CA</b> của coin:",
@@ -84,7 +84,7 @@ TEXTS = {
         "sold": "HỒ THANH KHOẢN (ĐÃ BÁN)"
     },
     "en": {
-        "start": "🚀 <b>System Updated with Bilingual Support!</b>\nType /help to start.",
+        "start": "🚀 <b>System Updated with Anti-Crash Shield!</b>\nType /help to start.",
         "timeout": "⏳ <b>Timeout (5 minutes)!</b>\nCurrent operation automatically canceled.",
         "choose_chain": "👇 <b>STEP 1/4:</b> Select the Chain:",
         "chain_selected": "✅ Chain selected: <b>{}</b>\n\n📝 STEP 2/4: Enter the <b>CA</b>:",
@@ -119,7 +119,6 @@ TEXTS = {
     }
 }
 
-# Hàm lấy câu text theo ngôn ngữ hiện tại
 def t(key, *args):
     lang = CONFIG["LANGUAGE"]
     text = TEXTS[lang].get(key, key)
@@ -127,7 +126,6 @@ def t(key, *args):
         return text.format(*args)
     return text
 
-# --- CÁC HÀM CÔNG CỤ ---
 def send_telegram_alert(message, reply_markup=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
@@ -151,12 +149,12 @@ def check_wallet_type(wallet, chain):
     except Exception: pass
     return t("wallet_unk")
 
-# --- LẮNG NGHE LỆNH TỪ TELEGRAM ---
 def listen_telegram_commands():
     global user_state
     last_update_id = 0
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     
+    print("Khởi động bộ phận nghe lệnh Telegram...", flush=True)
     while True:
         try:
             if user_state and (time.time() - user_state.get('last_time', 0) > 300):
@@ -168,13 +166,14 @@ def listen_telegram_commands():
                 last_update_id = item["update_id"]
                 process_update(item) 
         except Exception as e:
-            if "Timeout" not in str(e): print(f"Lỗi: {e}", flush=True)
+            if "Timeout" not in str(e): 
+                print(f"\n[LỖI LUỒNG TELEGRAM]: {e}", flush=True)
+                traceback.print_exc()
         time.sleep(2)
 
 def process_update(item):
     global COINS_TO_TRACK, CONFIG, user_state
     try:
-        # Xử lý nút bấm Callback
         if "callback_query" in item:
             callback = item["callback_query"]
             chat_id = str(callback["message"]["chat"]["id"])
@@ -182,13 +181,11 @@ def process_update(item):
             
             if chat_id != TELEGRAM_CHAT_ID: return
 
-            # Xử lý đổi ngôn ngữ
             if data in ["lang_vi", "lang_en"]:
                 CONFIG["LANGUAGE"] = data.split("_")[1]
                 send_telegram_alert(t("lang_changed"))
                 return
             
-            # Xử lý chọn Chain khi Add Coin
             if data.startswith("chain_") and user_state and user_state.get('step') == 'WAITING_CHAIN':
                 selected_chain = data.split("_")[1]
                 user_state['chain'] = selected_chain
@@ -197,7 +194,6 @@ def process_update(item):
                 send_telegram_alert(t("chain_selected", selected_chain.upper()))
             return
 
-        # Xử lý Text
         if "message" in item:
             chat_id = str(item["message"]["chat"]["id"])
             text = item["message"].get("text", "").strip()
@@ -276,7 +272,6 @@ def process_update(item):
                         send_telegram_alert(t("invalid_format"))
                     return
 
-            # Các lệnh kích hoạt
             if text == '/status':
                 msg = t("status_header", CONFIG['TIME_FRAME'], CONFIG['MIN_BUYS'])
                 for c in COINS_TO_TRACK: msg += t("status_item", c['name'], c['chain'].upper())
@@ -308,7 +303,9 @@ def process_update(item):
             elif not user_state:
                 send_telegram_alert(t("invalid_cmd"))
                 
-    except Exception as e: print(f"Lỗi: {e}", flush=True)
+    except Exception as e: 
+        print(f"\n[LỖI XỬ LÝ TIN NHẮN]: {e}", flush=True)
+        traceback.print_exc()
 
 # --- PHẦN 3: LOGIC BOT CHÍNH ---
 def run_bot():
@@ -338,6 +335,8 @@ def run_bot():
                 cursor = None
                 reached_time_limit = False
                 page_count = 0 
+
+                print(f"\n[{time.strftime('%H:%M:%S')}] Đang quét {coin_name}...", flush=True)
 
                 while not reached_time_limit and page_count < 50:
                     page_count += 1
@@ -407,7 +406,9 @@ def run_bot():
                             send_telegram_alert(msg)
                             alerted_wallets.add(original_buyer)
 
-            except Exception: pass
+            except Exception as e: 
+                print(f"\n[LỖI QUÉT DỮ LIỆU {coin.get('name', 'Unknown')}]: {e}", flush=True)
+                traceback.print_exc()
             time.sleep(3) 
             
         time.sleep(300) 
