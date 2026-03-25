@@ -1,7 +1,7 @@
 import requests
 import time
 import os
-import json # Thư viện mới để tạo nút bấm Telegram
+import json 
 from datetime import datetime, timedelta, timezone 
 from collections import defaultdict
 from flask import Flask
@@ -87,7 +87,7 @@ def listen_telegram_commands():
             res = requests.get(url, params={"offset": last_update_id + 1, "timeout": 10}, timeout=15).json()
             for item in res.get("result", []):
                 last_update_id = item["update_id"]
-                process_update(item) # Chuyển nguyên kiện dữ liệu đi xử lý
+                process_update(item) 
         except Exception:
             pass
         time.sleep(2)
@@ -105,7 +105,7 @@ def process_update(item):
             user_state['chain'] = data
             user_state['step'] = 'WAITING_CA'
             user_state['last_time'] = time.time() # Reset đồng hồ 5 phút
-            send_telegram_alert(f"✅ Đã chọn mạng: <b>{data.upper()}</b>\n\n📝 Tiếp theo, mời bạn nhập <b>địa chỉ CA</b> của coin:")
+            send_telegram_alert(f"✅ Đã chọn mạng: <b>{data.upper()}</b>\n\n📝 BƯỚC 2/4: Mời bạn nhập <b>địa chỉ CA</b> của coin:")
         return
 
     # 2. NẾU NGƯỜI DÙNG NHẮN TIN NHẮN VĂN BẢN
@@ -116,7 +116,7 @@ def process_update(item):
         if chat_id != TELEGRAM_CHAT_ID or not text:
             return
 
-        # A. NẾU ĐANG TRONG QUÁ TRÌNH THÊM COIN (CÓ TRẠNG THÁI)
+        # A. NẾU ĐANG TRONG QUÁ TRÌNH THÊM COIN
         if user_state:
             if text == '/cancel':
                 send_telegram_alert("🚫 Đã hủy quá trình thêm coin.")
@@ -130,7 +130,7 @@ def process_update(item):
                 if len(text) == 42 and text.startswith("0x"):
                     user_state['ca'] = text
                     user_state['step'] = 'WAITING_LP'
-                    send_telegram_alert("✅ CA hợp lệ!\n\n📝 Cuối cùng, mời bạn nhập <b>địa chỉ Pool (LP)</b>:")
+                    send_telegram_alert("✅ CA hợp lệ!\n\n📝 BƯỚC 3/4: Mời bạn nhập <b>địa chỉ Pool (LP)</b>:")
                 else:
                     send_telegram_alert("❌ <b>CA không hợp lệ!</b>\n(Địa chỉ phải bắt đầu bằng '0x' và dài đúng 42 ký tự).\n\n👉 Mời bạn nhập lại CA:")
                 return
@@ -138,20 +138,25 @@ def process_update(item):
             # Đang đợi nhập LP
             elif user_state['step'] == 'WAITING_LP':
                 if len(text) == 42 and text.startswith("0x"):
-                    lp = text
-                    chain = user_state['chain']
-                    ca = user_state['ca']
-                    
-                    # Tự động tạo tên coin ngắn gọn dựa vào CA
-                    name = f"Coin_{ca[:4]}...{ca[-4:]}" 
-                    
-                    COINS_TO_TRACK.append({
-                        "name": name, "chain": chain, "ca": ca, "lp": lp
-                    })
-                    send_telegram_alert(f"🎉 <b>HOÀN TẤT THÊM COIN MỚI!</b> 🎉\n\n🌐 <b>Mạng:</b> {chain.upper()}\n📝 <b>CA:</b> <code>{ca}</code>\n🏦 <b>LP:</b> <code>{lp}</code>\n\n<i>Hệ thống sẽ bắt đầu quét đồng coin này ở chu kỳ tiếp theo.</i>")
-                    user_state.clear() # Xóa trạng thái, trở về bình thường
+                    user_state['lp'] = text
+                    user_state['step'] = 'WAITING_NAME'
+                    send_telegram_alert("✅ LP hợp lệ!\n\n📝 BƯỚC 4/4: Mời bạn nhập <b>Tên của đồng coin</b> (Ví dụ: PEPE, DOGE...):")
                 else:
                     send_telegram_alert("❌ <b>LP không hợp lệ!</b>\n(Địa chỉ phải bắt đầu bằng '0x' và dài đúng 42 ký tự).\n\n👉 Mời bạn nhập lại địa chỉ Pool (LP):")
+                return
+                
+            # Đang đợi nhập Tên Coin
+            elif user_state['step'] == 'WAITING_NAME':
+                name = text
+                chain = user_state['chain']
+                ca = user_state['ca']
+                lp = user_state['lp']
+                
+                COINS_TO_TRACK.append({
+                    "name": name, "chain": chain, "ca": ca, "lp": lp
+                })
+                send_telegram_alert(f"🎉 <b>HOÀN TẤT THÊM COIN MỚI!</b> 🎉\n\n💎 <b>Tên Coin:</b> {name}\n🌐 <b>Mạng:</b> {chain.upper()}\n📝 <b>CA:</b> <code>{ca}</code>\n🏦 <b>LP:</b> <code>{lp}</code>\n\n<i>Hệ thống sẽ bắt đầu quét đồng coin này ở chu kỳ tiếp theo.</i>")
+                user_state.clear() # Xóa trạng thái, kết thúc hội thoại
                 return
 
         # B. CÁC LỆNH ĐIỀU KHIỂN BÌNH THƯỜNG
@@ -181,12 +186,10 @@ def process_update(item):
             send_telegram_alert(f"✅ Đã đổi điều kiện mua thành: <b>{CONFIG['MIN_BUYS']} lệnh</b>")
 
         elif text == '/add':
-            # Khởi tạo trạng thái hội thoại
             user_state = {
                 'step': 'WAITING_CHAIN',
                 'last_time': time.time()
             }
-            # Tạo các nút bấm hiển thị ngay dưới tin nhắn
             keyboard = {
                 "inline_keyboard": [
                     [
@@ -196,7 +199,7 @@ def process_update(item):
                     ]
                 ]
             }
-            send_telegram_alert("👇 <b>BƯỚC 1/3:</b> Mời bạn chọn Mạng lưới (Chain):", reply_markup=keyboard)
+            send_telegram_alert("👇 <b>BƯỚC 1/4:</b> Mời bạn chọn Mạng lưới (Chain):", reply_markup=keyboard)
 
         elif text.startswith('/del'):
             parts = text.split()
@@ -223,19 +226,19 @@ def process_update(item):
             )
             send_telegram_alert(help_msg)
 
-# --- PHẦN 3: LOGIC BOT CHÍNH (Giữ nguyên cấu trúc đa luồng, cách ly lỗi) ---
+# --- PHẦN 3: LOGIC BOT CHÍNH ---
 def run_bot():
     headers = {"accept": "application/json", "X-API-Key": API_KEY}
     alerted_wallets = set()
 
-    send_telegram_alert("🚀 <b>Hệ thống Đã Cập Nhật Trình Thêm Coin Mới!</b>\nGõ /add để thử ngay.")
+    send_telegram_alert("🚀 <b>Hệ thống Đã Cập Nhật Lại Trình Thêm Coin!</b>\nGõ /add để thử ngay.")
 
     while True:
         if not COINS_TO_TRACK:
             time.sleep(60)
             continue
             
-        for coin in list(COINS_TO_TRACK): # Dùng list() để tránh lỗi nếu đang quét thì bạn xóa coin
+        for coin in list(COINS_TO_TRACK): 
             try:
                 coin_name = coin["name"]
                 chain = coin["chain"]
@@ -302,14 +305,14 @@ def run_bot():
                             current_wallet = next_wallet
 
                         if len(path) == 1:
-                            msg = f"💎 <b>GOM KÍN (TRỮ {CONFIG['TIME_FRAME']}H)</b>\n\n💳 <code>{original_buyer}</code>\n🟢 Đã mua liên tục {count} lệnh.\n🔍 <a href='https://{explorer}/address/{original_buyer}'>Xem ví</a>"
+                            msg = f"💎 <b>GOM KÍN (TRỮ {CONFIG['TIME_FRAME']}H)</b>\n\n🪙 <b>Coin:</b> {coin_name}\n💳 <code>{original_buyer}</code>\n🟢 Đã mua liên tục {count} lệnh.\n🔍 <a href='https://{explorer}/address/{original_buyer}'>Xem ví</a>"
                             send_telegram_alert(msg)
                             alerted_wallets.add(original_buyer)
                         elif not sold_to_lp:
                             final_wallet = path[-1]
                             wallet_type = check_wallet_type(final_wallet, chain)
                             chain_str = " ➡ ".join([f"<code>{w[:6]}..{w[-4:]}</code>" for w in path])
-                            msg = f"🕵️‍♂️ <b>TRUY VẾT DÒNG TIỀN</b>\n\n🟢 Gom: {count} lệnh.\n🔄 Đi: {chain_str}\n🎯 Đích: <code>{final_wallet}</code>\n📊 Phân tích: {wallet_type}\n🔍 <a href='https://{explorer}/address/{final_wallet}'>Xem đích</a>"
+                            msg = f"🕵️‍♂️ <b>TRUY VẾT DÒNG TIỀN</b>\n\n🪙 <b>Coin:</b> {coin_name}\n🟢 Gom: {count} lệnh.\n🔄 Đi: {chain_str}\n🎯 Đích: <code>{final_wallet}</code>\n📊 Phân tích: {wallet_type}\n🔍 <a href='https://{explorer}/address/{final_wallet}'>Xem đích</a>"
                             send_telegram_alert(msg)
                             alerted_wallets.add(original_buyer)
 
