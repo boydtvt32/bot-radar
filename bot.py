@@ -1,5 +1,6 @@
 import requests
 import time
+import os
 from collections import defaultdict
 from flask import Flask
 from threading import Thread
@@ -12,7 +13,9 @@ def home():
     return "Bot Radar DCA đang thức và hoạt động 24/7!"
 
 def run_server():
-    app.run(host='0.0.0.0', port=10000, use_reloader=False)
+    # Render tự động cấp một Port, ta cần bắt lấy nó bằng os.environ
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, use_reloader=False)
 
 # --- PHẦN 2: THÔNG SỐ CỦA BẠN ---
 API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjM3NWFiODUxLWJkN2ItNGRjYy05OWU4LTY3YWExZTY5NjVmNyIsIm9yZ0lkIjoiNTA2NzE3IiwidXNlcklkIjoiNTIxMzgxIiwidHlwZUlkIjoiZTkzYzUwZjctOGI2ZC00ZDkyLTk4MDItMGIyNDllMTUzMzNiIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQyNTkyNjEsImV4cCI6NDkzMDAxOTI2MX0.-ERcEVFm28TLwIr5udsgMWBAvaUaHf5cf5Qd0vLzb18'
@@ -85,7 +88,6 @@ def run_bot():
 
 # --- KÍCH HOẠT CHẠY SONG SONG CẢ 2 ---
 if __name__ == "__main__":
-    # Đảo lại cấu trúc một chút để Server và Bot chạy ổn định hơn trên Linux
     t = Thread(target=run_bot)
     t.daemon = True
     t.start()
