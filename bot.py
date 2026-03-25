@@ -26,9 +26,11 @@ def send_telegram_alert(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
     try:
-        requests.post(url, data=data)
-    except:
-        pass
+        # Nhận kết quả từ Telegram và in ra màn hình Log
+        response = requests.post(url, data=data)
+        print("Trạng thái gửi Telegram:", response.text)
+    except Exception as e:
+        print("Lỗi kết nối khi gửi Telegram:", e)
 
 # --- PHẦN 3: LOGIC BOT CHÍNH ---
 def run_bot():
