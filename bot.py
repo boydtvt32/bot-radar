@@ -10,7 +10,7 @@ from threading import Thread
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Bot Radar Bọc Thép đang hoạt động!"
+    return "Bot Radar Bọc Thép đ1ang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
