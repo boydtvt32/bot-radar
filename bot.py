@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (Forensics V8 - Auto Fetch Name) đang hoạt động!"
+    return "BSC Sniper Bot (Forensics V9 - Super Radar) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
@@ -21,6 +21,8 @@ def run_server():
 RAW_API_KEYS = [
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImU0Y2QxMTFlLTE3YzYtNDU2My1iOGM5LTFjZWZkMjNmMjJhYiIsIm9yZ0lkIjoiNTA3MDc2IiwidXNlcklkIjoiNTIxNzQ5IiwidHlwZUlkIjoiZDhjZmE3NTEtNTAyMC00MTZkLWJkOGItZWJlMWM3Y2Q0NGJiIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0ODczODMsImV4cCI6NDkzMDI0NzM4M30.EdCGoN5pzZEuiDmvbEbHvLLGtQU2D2O_gSHX0t2JKug',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjczZTU1ZWQxLTNjYzQtNGM3ZC05MTVmLThiMDc5MTQ3YjAyYiIsIm9yZ0lkIjoiNTA3MDc4IiwidXNlcklkIjoiNTIxNzUxIiwidHlwZUlkIjoiODFkY2ZiNTgtNTAxNC00NjRkLTg3ZDYtMTM0ZjQzZTVkZmRkIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0ODg3NTksImV4cCI6NDkzMDI0ODc1OX0.6hBFIZcOM1rVa6sUPNUZEUUEfSKanrurzqKQPbffiSI',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjVkZTJkNDIzLTY4NmItNDQ1ZS1iNjQ3LTBjNDA5Y2NhZjhiOCIsIm9yZ0lkIjoiNTA3MDc5IiwidXNlcklkIjoiNTIxNzUyIiwidHlwZUlkIjoiMGZhMWU1ZTItYTE1Ny00ODc5LTkxNzktZDA5ZmNlNGJkZjY3IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0ODkxNDUsImV4cCI6NDkzMDI0OTE0NX0.iSlSkU4z_HtWHRQAPRl0H6ZcX1jBbusE9dxjGdIqNp0',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjM3NWFiODUxLWJkN2ItNGRjYy05OWU4LTY3YWExZTY5NjVmNyIsIm9yZ0lkIjoiNTA2NzE3IiwidXNlcklkIjoiNTIxMzgxIiwidHlwZUlkIjoiZTkzYzUwZjctOGI2ZC00ZDkyLTk4MDItMGIyNDllMTUzMzNiIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQyNTkyNjEsImV4cCI6NDkzMDAxOTI2MX0.-ERcEVFm28TLwIr5udsgMWBAvaUaHf5cf5Qd0vLzb18',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImUzYzYyNzRhLWMxZGItNDhlYS1hMjkxLWMzZGQ0YTU0YmM0NiIsIm9yZ0lkIjoiNTA3MDI0IiwidXNlcklkIjoiNTIxNjk2IiwidHlwZUlkIjoiMGExM2FmMGEtNDU2Yi00YTgwLWE0ZjMtZjNlZTc4N2Q0N2M1IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0NTYyMzEsImV4cCI6NDkzMDIxNjIzMX0.gCOXCBjaTjWSo5XskcX4jdvo5fZDptZ-VsI6NuQZwvY'
 ]
 
@@ -38,7 +40,8 @@ CONFIG = {
     "MAX_AUTO_COINS": 5,     
     "AUTO_SCAN": True,
     "MIN_BNB_BUY": 0.01,     
-    "LANGUAGE": "vi"
+    "LANGUAGE": "vi",
+    "NOTIFY_NEW_COIN": True  # Công tắc báo mọi coin mới
 }
 
 MANUAL_COINS = []
@@ -61,7 +64,9 @@ def get_current_headers():
     global current_api_index
     if not API_KEYS: return {"accept": "application/json"}
     if current_api_index >= len(API_KEYS): current_api_index = 0
-    return {"accept": "application/json", "X-API-Key": API_KEYS[current_api_index]}
+    header = {"accept": "application/json", "X-API-Key": API_KEYS[current_api_index]}
+    current_api_index += 1
+    return header
 
 def send_telegram_alert(message, reply_markup=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -91,7 +96,7 @@ def format_bsc_security(ca):
     hp_str = "🔴 CÓ (Nguy hiểm)" if sec['is_honeypot'] else "🟢 Không"
     return f"🛡 <b>Bảo mật:</b> Honeypot: {hp_str} | Thuế: Mua {sec['buy_tax']:.1f}% - Bán {sec['sell_tax']:.1f}%\n"
 
-# --- WEBHOOK MORALIS ---
+# --- WEBHOOK MORALIS (UPDATE TÍNH NĂNG BÁO MỌI COIN) ---
 @app.route('/webhook', methods=['POST'])
 def moralis_webhook():
     global AUTO_COINS, CONFIG
@@ -110,37 +115,60 @@ def moralis_webhook():
 
                     if any(c['ca'].lower() == new_token.lower() for c in AUTO_COINS + MANUAL_COINS): continue
 
-                    sec_info = check_bsc_security(new_token)
-                    if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10:
-                        if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']: AUTO_COINS.pop(0)
-                        
-                        # Auto Fetch Tên Coin
-                        coin_name = f"AutoBSC_{new_token[:4]}"
-                        try:
-                            meta_url = f"https://deep-index.moralis.io/api/v2.2/erc20/metadata?chain=bsc&addresses={new_token}"
-                            res = requests.get(meta_url, headers=get_current_headers(), timeout=5)
-                            if res.status_code == 200:
-                                meta_data = res.json()
-                                if len(meta_data) > 0 and meta_data[0].get('symbol'):
-                                    coin_name = "Auto_" + meta_data[0].get('symbol')
-                        except: pass
+                    # Auto Fetch Tên Coin
+                    coin_name = f"BSC_{new_token[:4]}"
+                    try:
+                        meta_url = f"https://deep-index.moralis.io/api/v2.2/erc20/metadata?chain=bsc&addresses={new_token}"
+                        res = requests.get(meta_url, headers=get_current_headers(), timeout=5)
+                        if res.status_code == 200:
+                            meta_data = res.json()
+                            if len(meta_data) > 0 and meta_data[0].get('symbol'):
+                                coin_name = meta_data[0].get('symbol')
+                    except: pass
 
+                    # Check bảo mật
+                    sec_info = check_bsc_security(new_token)
+                    is_clean = False
+                    if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10:
+                        is_clean = True
+
+                    # TÍNH NĂNG BÁO MỌI COIN MỚI (CHỈ CHẠY KHI ĐƯỢC BẬT)
+                    if CONFIG.get("NOTIFY_NEW_COIN", True):
+                        hp_str = "🔴 CÓ (Lừa đảo)" if sec_info and sec_info['is_honeypot'] else ("🟢 Không" if sec_info else "⚠️ Lỗi quét")
+                        bt = f"{sec_info['buy_tax']:.1f}" if sec_info else "?"
+                        st = f"{sec_info['sell_tax']:.1f}" if sec_info else "?"
+                        
+                        msg = f"🆕 <b>CÓ COIN MỚI VỪA TẠO THANH KHOẢN!</b>\n\n"
+                        msg += f"🪙 Tên Coin: <b>{coin_name}</b>\n📝 CA: <code>{new_token}</code>\n"
+                        msg += f"🛡 <b>Bảo mật:</b> Honeypot: {hp_str} | Thuế: {bt}% / {st}%\n\n"
+                        
+                        if is_clean:
+                            msg += "✅ <b>Đạt chuẩn an toàn:</b> Đã tự động đưa vào rổ AUTO quét Cá mập!"
+                        else:
+                            msg += "⚠️ <b>Rủi ro cao:</b> Đã bỏ qua, không đưa vào danh sách quét."
+                        
+                        send_telegram_alert(msg)
+
+                    # NẾU SẠCH SẼ THÌ MỚI ĐƯA VÀO RỔ QUÉT CÁ MẬP
+                    if is_clean:
+                        if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']: AUTO_COINS.pop(0)
                         AUTO_COINS.append({"name": coin_name, "chain": "bsc", "ca": new_token, "lp": lp_address, "last_alert_at": time.time(), "prompt_sent": False})
-                        send_telegram_alert(f"🚨 <b>STREAMS PHÁT HIỆN GEM BSC MỚI!</b>\n🪙 Tên Coin: <b>{coin_name}</b>\n📝 CA: <code>{new_token}</code>\n✅ Sạch sẽ, đưa vào radar!")
     except: pass
     return "OK", 200
 
 # --- BẢNG ĐIỀU KHIỂN & LỆNH ---
 def send_main_menu():
+    notify_text = "🔔 Báo Coin Mới: BẬT" if CONFIG.get("NOTIFY_NEW_COIN", True) else "🔕 Báo Coin Mới: TẮT"
     keyboard = {"inline_keyboard": [
         [{"text": "📊 Xem Cấu Hình", "callback_data": "menu_status"}, {"text": "📋 List Đang Quét", "callback_data": "menu_list"}],
         [{"text": "⏱ Đổi Khung Giờ", "callback_data": "menu_set_time"}, {"text": "🛒 Đổi Lệnh Mua", "callback_data": "menu_set_buy"}],
         [{"text": "➕ Thêm Coin BSC", "callback_data": "menu_add"}, {"text": "🗑 Xóa Coin", "callback_data": "menu_del"}],
         [{"text": "🐋 Cài Tay To (BNB)", "callback_data": "menu_set_bnb"}, {"text": "📦 Giới Hạn Auto", "callback_data": "menu_set_max_auto"}],
         [{"text": "🔑 Kho API Keys", "callback_data": "menu_keys"}, {"text": "➕ Nạp API Key", "callback_data": "menu_add_key"}],
-        [{"text": "🌐 Đổi Ngôn Ngữ", "callback_data": "menu_language"}, {"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
+        [{"text": notify_text, "callback_data": "menu_toggle_new"}, {"text": "🌐 Đổi Ngôn", "callback_data": "menu_language"}],
+        [{"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
-    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V8)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
+    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V9)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
 
 def execute_command(cmd):
     global CONFIG, user_state
@@ -149,7 +177,8 @@ def execute_command(cmd):
                f"🤖 AUTO: Quét <b>{CONFIG['AUTO_TIME_FRAME']}h</b> | Gom >= <b>{CONFIG['AUTO_MIN_BUYS']}</b>\n"
                f"👤 THỦ CÔNG: Quét <b>{CONFIG['MANUAL_TIME_FRAME']}h</b> | Gom >= <b>{CONFIG['MANUAL_MIN_BUYS']}</b>\n"
                f"🐋 Mức Tay To: <b>>= {CONFIG['MIN_BNB_BUY']} BNB</b>\n"
-               f"🔑 API: Đang dùng Key <b>{current_api_index + 1}/{len(API_KEYS)}</b>\n"
+               f"🔔 Báo mọi coin mới: <b>{'BẬT' if CONFIG.get('NOTIFY_NEW_COIN', True) else 'TẮT'}</b>\n"
+               f"🔑 Kho API: <b>{len(API_KEYS)} Key</b> (Đang luân phiên sử dụng)\n"
                f"⛓ Giới hạn Vết dầu loang: <b>Max F10</b>")
         send_telegram_alert(msg)
     elif cmd == 'list':
@@ -158,6 +187,10 @@ def execute_command(cmd):
         msg += f"\n👤 <b>THỦ CÔNG ({len(MANUAL_COINS)})</b>\n"
         for c in MANUAL_COINS: msg += f" ├ {c['name']} - <code>{c['ca'][:6]}..{c['ca'][-4:]}</code>\n"
         send_telegram_alert(msg)
+    elif cmd == 'toggle_new':
+        CONFIG["NOTIFY_NEW_COIN"] = not CONFIG.get("NOTIFY_NEW_COIN", True)
+        state = "BẬT" if CONFIG["NOTIFY_NEW_COIN"] else "TẮT"
+        send_telegram_alert(f"✅ Chế độ Báo Coin Mới đã được <b>{state}</b>. Bấm /menu để tải lại bảng điều khiển.")
     elif cmd == 'set_time':
         kb = {"inline_keyboard": [[{"text": "🤖 Cho rổ Auto", "callback_data": "set_time_auto"}, {"text": "👤 Cho Thủ Công", "callback_data": "set_time_manual"}]]}
         send_telegram_alert("🕒 Cài Khung giờ cho rổ nào?", reply_markup=kb)
@@ -179,8 +212,7 @@ def execute_command(cmd):
     elif cmd == 'keys':
         msg = f"🔑 <b>KHO API KEYS ({len(API_KEYS)})</b>\n\n"
         for i, k in enumerate(API_KEYS):
-            is_active = "(🟢)" if i == current_api_index else ""
-            msg += f"🔹 Key {i+1}: <code>{k[:10]}...{k[-10:]}</code> {is_active}\n"
+            msg += f"🔹 Key {i+1}: <code>{k[:10]}...{k[-10:]}</code>\n"
         send_telegram_alert(msg)
     elif cmd == 'add_key':
         user_state = {'step': 'WAITING_ADD_KEY', 'last_time': time.time()}
@@ -246,9 +278,8 @@ def process_update(item):
                 elif step == 'WAITING_LP':
                     ca = user_state['ca']
                     lp = text
-                    coin_name = f"BSC_{ca[:4]}" # Tên mặc định nếu mạng lag
+                    coin_name = f"BSC_{ca[:4]}" 
                     
-                    # Tự động kết nối lấy Tên Coin chuẩn xác
                     try:
                         meta_url = f"https://deep-index.moralis.io/api/v2.2/erc20/metadata?chain=bsc&addresses={ca}"
                         res = requests.get(meta_url, headers=get_current_headers(), timeout=5)
