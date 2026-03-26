@@ -2,7 +2,6 @@ import requests
 import time
 import os
 import json
-import sys
 from datetime import datetime, timedelta, timezone 
 from flask import Flask, request
 from threading import Thread
@@ -12,7 +11,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (Forensics V3 - Debug Mode) đang hoạt động!"
+    return "BSC Sniper Bot (Forensics V4 - Super Meme) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
@@ -30,12 +29,12 @@ TELEGRAM_CHAT_ID = '1976782751'
 
 CONFIG = {
     "MANUAL_TIME_FRAME": 6,  
-    "MANUAL_MIN_BUYS": 1,    # Cài 1 lệnh để test cho nhanh
+    "MANUAL_MIN_BUYS": 1,    
     "AUTO_TIME_FRAME": 2,    
     "AUTO_MIN_BUYS": 2,      
     "MAX_AUTO_COINS": 5,     
     "AUTO_SCAN": True,
-    "MIN_BNB_BUY": 0.01,     # Tay to 0.01 BNB để test cho dễ nổ
+    "MIN_BNB_BUY": 0.01,     
     "LANGUAGE": "vi"
 }
 
@@ -126,7 +125,7 @@ def send_main_menu():
         [{"text": "🔑 Kho API Keys", "callback_data": "menu_keys"}, {"text": "➕ Nạp API Key", "callback_data": "menu_add_key"}],
         [{"text": "🌐 Đổi Ngôn Ngữ", "callback_data": "menu_language"}, {"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
-    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (DEBUG)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
+    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V4)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
 
 def execute_command(cmd):
     global CONFIG, user_state
@@ -230,7 +229,7 @@ def process_update(item):
                     send_telegram_alert("✅ Nhập tiếp địa chỉ LP (PancakeSwap Pair):")
                 elif step == 'WAITING_LP':
                     MANUAL_COINS.append({"name": f"BSC_{user_state['ca'][:4]}", "ca": user_state['ca'], "lp": text})
-                    send_telegram_alert("🎉 Đã thêm vào Radar Thủ Công! Vui lòng kiểm tra Logs trên Render.")
+                    send_telegram_alert("🎉 Đã thêm vào Radar Thủ Công! (Bot sẽ bắt đầu quét trong vài giây)")
                     user_state.clear()
                 elif step == 'WAITING_DEL_COIN':
                     tgt = text.lower()
@@ -282,9 +281,12 @@ def listen_telegram_commands():
         except: pass
         time.sleep(2)
 
-# --- LÕI ĐIỀU TRA ON-CHAIN (BẬT ĐÈN PHA SOI LỖI) ---
+# --- LÕI ĐIỀU TRA ON-CHAIN ---
 def run_bot():
     print("🚀 LUỒNG QUÉT CÁ MẬP ĐÃ KHỞI ĐỘNG!", flush=True)
+    # THÔNG BÁO TỚI TELEGRAM KHI BOT CHẠY LÊN
+    send_telegram_alert("🚀 <b>Bot Săn Meme siêu cấp đã sẵn sàng, bấm /menu để bắt đầu</b>")
+    
     alerted_coins = set()
     while True:
         now = time.time()
@@ -324,14 +326,14 @@ def run_bot():
                         token_price_bnb = float(p_data.get("nativePrice", {}).get("value", "0")) / (10**18)
                         print(f"   => Giá quy đổi: {token_price_bnb:.8f} BNB", flush=True)
                     else:
-                        print(f"   ❌ LỖI LẤY GIÁ: HTTP {price_res.status_code} - {price_res.text}", flush=True)
+                        print(f"   ❌ LỖI LẤY GIÁ: HTTP {price_res.status_code}", flush=True)
 
                     url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/transfers?chain=bsc&limit=100"
                     response = requests.get(url, headers=get_current_headers(), timeout=10)
                     
                     if response.status_code == 200:
                         transactions = response.json().get('result', [])
-                        print(f"   => Lấy được {len(transactions)} giao dịch. Bắt đầu phân tích Vết Dầu Loang...", flush=True)
+                        print(f"   => Lấy được {len(transactions)} giao dịch. Phân tích Vết Dầu Loang...", flush=True)
                         
                         time_ago = datetime.now(timezone.utc) - timedelta(hours=time_frame)
                         valid_txs = sorted([tx for tx in transactions if datetime.strptime(tx['block_timestamp'][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc) >= time_ago], key=lambda x: x.get('block_timestamp', ''))
@@ -376,14 +378,16 @@ def run_bot():
                             send_telegram_alert(msg)
                             alerted_coins.add(alert_key)
                     else:
-                        print(f"   ❌ LỖI LẤY LỊCH SỬ GIAO DỊCH: HTTP {response.status_code} - {response.text}", flush=True)
+                        print(f"   ❌ LỖI GIAO DỊCH: HTTP {response.status_code}", flush=True)
 
                 except Exception as e:
-                    print(f"   ⚠️ LỖI NGHIÊM TRỌNG TRONG CODE: {e}", flush=True)
+                    print(f"   ⚠️ LỖI TRONG CODE: {e}", flush=True)
                 time.sleep(2) 
         time.sleep(15) 
 
+# --- ĐẢM BẢO RENDER CHẠY LUỒNG NGẦM ---
+Thread(target=listen_telegram_commands, daemon=True).start()
+Thread(target=run_bot, daemon=True).start()
+
 if __name__ == "__main__":
-    Thread(target=listen_telegram_commands, daemon=True).start()
-    Thread(target=run_bot, daemon=True).start()
     run_server()
