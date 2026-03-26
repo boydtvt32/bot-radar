@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (Forensics V7 - Trạm Gác Thông Minh) đang hoạt động!"
+    return "BSC Sniper Bot (Forensics V8 - Auto Fetch Name) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
@@ -113,8 +113,20 @@ def moralis_webhook():
                     sec_info = check_bsc_security(new_token)
                     if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10:
                         if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']: AUTO_COINS.pop(0)
-                        AUTO_COINS.append({"name": f"AutoBSC_{new_token[:4]}", "chain": "bsc", "ca": new_token, "lp": lp_address, "last_alert_at": time.time(), "prompt_sent": False})
-                        send_telegram_alert(f"🚨 <b>STREAMS PHÁT HIỆN GEM BSC MỚI!</b>\n📝 CA: <code>{new_token}</code>\n✅ Sạch sẽ, đưa vào radar!")
+                        
+                        # Auto Fetch Tên Coin
+                        coin_name = f"AutoBSC_{new_token[:4]}"
+                        try:
+                            meta_url = f"https://deep-index.moralis.io/api/v2.2/erc20/metadata?chain=bsc&addresses={new_token}"
+                            res = requests.get(meta_url, headers=get_current_headers(), timeout=5)
+                            if res.status_code == 200:
+                                meta_data = res.json()
+                                if len(meta_data) > 0 and meta_data[0].get('symbol'):
+                                    coin_name = "Auto_" + meta_data[0].get('symbol')
+                        except: pass
+
+                        AUTO_COINS.append({"name": coin_name, "chain": "bsc", "ca": new_token, "lp": lp_address, "last_alert_at": time.time(), "prompt_sent": False})
+                        send_telegram_alert(f"🚨 <b>STREAMS PHÁT HIỆN GEM BSC MỚI!</b>\n🪙 Tên Coin: <b>{coin_name}</b>\n📝 CA: <code>{new_token}</code>\n✅ Sạch sẽ, đưa vào radar!")
     except: pass
     return "OK", 200
 
@@ -128,7 +140,7 @@ def send_main_menu():
         [{"text": "🔑 Kho API Keys", "callback_data": "menu_keys"}, {"text": "➕ Nạp API Key", "callback_data": "menu_add_key"}],
         [{"text": "🌐 Đổi Ngôn Ngữ", "callback_data": "menu_language"}, {"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
-    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V7)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
+    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V8)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
 
 def execute_command(cmd):
     global CONFIG, user_state
@@ -137,7 +149,7 @@ def execute_command(cmd):
                f"🤖 AUTO: Quét <b>{CONFIG['AUTO_TIME_FRAME']}h</b> | Gom >= <b>{CONFIG['AUTO_MIN_BUYS']}</b>\n"
                f"👤 THỦ CÔNG: Quét <b>{CONFIG['MANUAL_TIME_FRAME']}h</b> | Gom >= <b>{CONFIG['MANUAL_MIN_BUYS']}</b>\n"
                f"🐋 Mức Tay To: <b>>= {CONFIG['MIN_BNB_BUY']} BNB</b>\n"
-               f"🔑 API: Đang dùng Key <b>{current_api_index + 1}/{len(API_KEYS)}</b> (Đã lọc trùng)\n"
+               f"🔑 API: Đang dùng Key <b>{current_api_index + 1}/{len(API_KEYS)}</b>\n"
                f"⛓ Giới hạn Vết dầu loang: <b>Max F10</b>")
         send_telegram_alert(msg)
     elif cmd == 'list':
@@ -230,10 +242,26 @@ def process_update(item):
                     user_state['ca'] = text
                     user_state['step'] = 'WAITING_LP'
                     send_telegram_alert("✅ Nhập tiếp địa chỉ LP (PancakeSwap Pair):")
+                
                 elif step == 'WAITING_LP':
-                    MANUAL_COINS.append({"name": f"BSC_{user_state['ca'][:4]}", "ca": user_state['ca'], "lp": text})
-                    send_telegram_alert("🎉 Đã thêm vào Radar Thủ Công! (Bot sẽ bắt đầu quét trong vài giây)")
+                    ca = user_state['ca']
+                    lp = text
+                    coin_name = f"BSC_{ca[:4]}" # Tên mặc định nếu mạng lag
+                    
+                    # Tự động kết nối lấy Tên Coin chuẩn xác
+                    try:
+                        meta_url = f"https://deep-index.moralis.io/api/v2.2/erc20/metadata?chain=bsc&addresses={ca}"
+                        res = requests.get(meta_url, headers=get_current_headers(), timeout=5)
+                        if res.status_code == 200:
+                            meta_data = res.json()
+                            if len(meta_data) > 0 and meta_data[0].get('symbol'):
+                                coin_name = meta_data[0].get('symbol')
+                    except: pass
+
+                    MANUAL_COINS.append({"name": coin_name, "ca": ca, "lp": lp})
+                    send_telegram_alert(f"🎉 Đã thêm <b>{coin_name}</b> vào Radar Thủ Công! (Bot sẽ bắt đầu quét trong vài giây)")
                     user_state.clear()
+                
                 elif step == 'WAITING_DEL_COIN':
                     tgt = text.lower()
                     MANUAL_COINS[:] = [c for c in MANUAL_COINS if c['ca'].lower() != tgt]
@@ -291,7 +319,6 @@ def run_bot():
     print("🚀 LUỒNG QUÉT CÁ MẬP ĐÃ KHỞI ĐỘNG!", flush=True)
     send_telegram_alert("🚀 <b>Bot Săn Meme siêu cấp đã sẵn sàng, bấm /menu để bắt đầu</b>")
     
-    # DICTIONARY MỚI: THEO DÕI SỰ BIẾN ĐỘNG THAY VÌ KHÓA CHẾT
     alerted_coins_state = {} 
     
     while True:
@@ -368,14 +395,11 @@ def run_bot():
                         
                         print(f"   => Kết quả: {valid_buy_chains} chuỗi gom ngầm", flush=True)
 
-                        # KIỂM TRA MỐC BÁO CÁO GẦN NHẤT
                         last_reported_chains = alerted_coins_state.get(alert_key, 0)
 
-                        # Nếu đạt đủ yêu cầu VÀ số lệnh gom đã TĂNG LÊN so với lần báo trước
                         if valid_buy_chains >= min_buys and valid_buy_chains > last_reported_chains:
                             print(f"   🚨 BÁO ĐỘNG TỚI TELEGRAM! (Có lệnh gom mới)", flush=True)
                             
-                            # CẬP NHẬT LẠI MỐC
                             alerted_coins_state[alert_key] = valid_buy_chains
 
                             holders_details = []
@@ -429,7 +453,6 @@ def run_bot():
                                    f"✅ Bot xác nhận: Tuyệt đối chưa xả hàng!\n{sec_info}")
                             send_telegram_alert(msg)
 
-                        # Nếu có thằng xả hàng làm tụt chuỗi gom, bot hạ mốc xuống để lần sau gom lại nó vẫn báo
                         elif valid_buy_chains < last_reported_chains:
                             alerted_coins_state[alert_key] = valid_buy_chains
                             
