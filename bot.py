@@ -2,6 +2,7 @@ import requests
 import time
 import os
 import json
+import traceback
 from datetime import datetime, timedelta, timezone 
 from flask import Flask, request
 from threading import Thread
@@ -11,7 +12,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (Forensics V9 - Super Radar) đang hoạt động!"
+    return "BSC Sniper Bot (Forensics V10 - Anti Crash) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
@@ -26,7 +27,6 @@ RAW_API_KEYS = [
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImUzYzYyNzRhLWMxZGItNDhlYS1hMjkxLWMzZGQ0YTU0YmM0NiIsIm9yZ0lkIjoiNTA3MDI0IiwidXNlcklkIjoiNTIxNjk2IiwidHlwZUlkIjoiMGExM2FmMGEtNDU2Yi00YTgwLWE0ZjMtZjNlZTc4N2Q0N2M1IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0NTYyMzEsImV4cCI6NDkzMDIxNjIzMX0.gCOXCBjaTjWSo5XskcX4jdvo5fZDptZ-VsI6NuQZwvY'
 ]
 
-# Tự động lọc trùng lặp API Key
 API_KEYS = list(set(RAW_API_KEYS))
 
 TELEGRAM_BOT_TOKEN = '8526113763:AAH3wANXx126AloxzAKJQrKJAPWiQm7Kb6Q'
@@ -41,7 +41,7 @@ CONFIG = {
     "AUTO_SCAN": True,
     "MIN_BNB_BUY": 0.01,     
     "LANGUAGE": "vi",
-    "NOTIFY_NEW_COIN": True  # Công tắc báo mọi coin mới
+    "NOTIFY_NEW_COIN": True  
 }
 
 MANUAL_COINS = []
@@ -96,7 +96,7 @@ def format_bsc_security(ca):
     hp_str = "🔴 CÓ (Nguy hiểm)" if sec['is_honeypot'] else "🟢 Không"
     return f"🛡 <b>Bảo mật:</b> Honeypot: {hp_str} | Thuế: Mua {sec['buy_tax']:.1f}% - Bán {sec['sell_tax']:.1f}%\n"
 
-# --- WEBHOOK MORALIS (UPDATE TÍNH NĂNG BÁO MỌI COIN) ---
+# --- WEBHOOK MORALIS (BÁO MỌI COIN MỚI) ---
 @app.route('/webhook', methods=['POST'])
 def moralis_webhook():
     global AUTO_COINS, CONFIG
@@ -115,7 +115,6 @@ def moralis_webhook():
 
                     if any(c['ca'].lower() == new_token.lower() for c in AUTO_COINS + MANUAL_COINS): continue
 
-                    # Auto Fetch Tên Coin
                     coin_name = f"BSC_{new_token[:4]}"
                     try:
                         meta_url = f"https://deep-index.moralis.io/api/v2.2/erc20/metadata?chain=bsc&addresses={new_token}"
@@ -126,13 +125,11 @@ def moralis_webhook():
                                 coin_name = meta_data[0].get('symbol')
                     except: pass
 
-                    # Check bảo mật
                     sec_info = check_bsc_security(new_token)
                     is_clean = False
                     if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10:
                         is_clean = True
 
-                    # TÍNH NĂNG BÁO MỌI COIN MỚI (CHỈ CHẠY KHI ĐƯỢC BẬT)
                     if CONFIG.get("NOTIFY_NEW_COIN", True):
                         hp_str = "🔴 CÓ (Lừa đảo)" if sec_info and sec_info['is_honeypot'] else ("🟢 Không" if sec_info else "⚠️ Lỗi quét")
                         bt = f"{sec_info['buy_tax']:.1f}" if sec_info else "?"
@@ -149,7 +146,6 @@ def moralis_webhook():
                         
                         send_telegram_alert(msg)
 
-                    # NẾU SẠCH SẼ THÌ MỚI ĐƯA VÀO RỔ QUÉT CÁ MẬP
                     if is_clean:
                         if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']: AUTO_COINS.pop(0)
                         AUTO_COINS.append({"name": coin_name, "chain": "bsc", "ca": new_token, "lp": lp_address, "last_alert_at": time.time(), "prompt_sent": False})
@@ -165,10 +161,10 @@ def send_main_menu():
         [{"text": "➕ Thêm Coin BSC", "callback_data": "menu_add"}, {"text": "🗑 Xóa Coin", "callback_data": "menu_del"}],
         [{"text": "🐋 Cài Tay To (BNB)", "callback_data": "menu_set_bnb"}, {"text": "📦 Giới Hạn Auto", "callback_data": "menu_set_max_auto"}],
         [{"text": "🔑 Kho API Keys", "callback_data": "menu_keys"}, {"text": "➕ Nạp API Key", "callback_data": "menu_add_key"}],
-        [{"text": notify_text, "callback_data": "menu_toggle_new"}, {"text": "🌐 Đổi Ngôn", "callback_data": "menu_language"}],
+        [{"text": notify_text, "callback_data": "menu_toggle_new"}, {"text": "🌐 Đổi Ngôn Ngữ", "callback_data": "menu_language"}],
         [{"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
-    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V9)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
+    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V10)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
 
 def execute_command(cmd):
     global CONFIG, user_state
@@ -178,7 +174,7 @@ def execute_command(cmd):
                f"👤 THỦ CÔNG: Quét <b>{CONFIG['MANUAL_TIME_FRAME']}h</b> | Gom >= <b>{CONFIG['MANUAL_MIN_BUYS']}</b>\n"
                f"🐋 Mức Tay To: <b>>= {CONFIG['MIN_BNB_BUY']} BNB</b>\n"
                f"🔔 Báo mọi coin mới: <b>{'BẬT' if CONFIG.get('NOTIFY_NEW_COIN', True) else 'TẮT'}</b>\n"
-               f"🔑 Kho API: <b>{len(API_KEYS)} Key</b> (Đang luân phiên sử dụng)\n"
+               f"🔑 Kho API: <b>{len(API_KEYS)} Key</b>\n"
                f"⛓ Giới hạn Vết dầu loang: <b>Max F10</b>")
         send_telegram_alert(msg)
     elif cmd == 'list':
@@ -347,153 +343,159 @@ def listen_telegram_commands():
 
 # --- LÕI ĐIỀU TRA ON-CHAIN ---
 def run_bot():
-    print("🚀 LUỒNG QUÉT CÁ MẬP ĐÃ KHỞI ĐỘNG!", flush=True)
-    send_telegram_alert("🚀 <b>Bot Săn Meme siêu cấp đã sẵn sàng, bấm /menu để bắt đầu</b>")
-    
-    alerted_coins_state = {} 
-    
-    while True:
-        now = time.time()
-        for coin in list(AUTO_COINS):
-            if coin.get('prompt_sent'):
-                if now - coin.get('prompt_time', 0) > 300:
-                    coin['prompt_sent'] = False
-                    coin['last_alert_at'] = now
-            elif now - coin.get('last_alert_at', now) > 86400:
-                coin['prompt_sent'] = True
-                coin['prompt_time'] = now
-                kb = {"inline_keyboard": [[{"text": "✅ Xóa", "callback_data": f"dead_yes_{coin['ca']}"}, {"text": "❌ Giữ 24h", "callback_data": f"dead_no_{coin['ca']}"}]]}
-                send_telegram_alert(f"🗑 <b>DỌN RÁC:</b> Đồng <b>{coin['name']}</b> héo sau 24h, xóa không?", reply_markup=kb)
+    try:
+        # Xóa toàn bộ Emoji ở phần in log hệ thống để chống lỗi Crash trên Render
+        print("--- LUONG QUET CA MAP DA KHOI DONG ---", flush=True)
+        send_telegram_alert("🚀 <b>Bot Săn Meme siêu cấp đã sẵn sàng, bấm /menu để bắt đầu</b>")
+        
+        alerted_coins_state = {} 
+        
+        while True:
+            now = time.time()
+            for coin in list(AUTO_COINS):
+                if coin.get('prompt_sent'):
+                    if now - coin.get('prompt_time', 0) > 300:
+                        coin['prompt_sent'] = False
+                        coin['last_alert_at'] = now
+                elif now - coin.get('last_alert_at', now) > 86400:
+                    coin['prompt_sent'] = True
+                    coin['prompt_time'] = now
+                    kb = {"inline_keyboard": [[{"text": "✅ Xóa", "callback_data": f"dead_yes_{coin['ca']}"}, {"text": "❌ Giữ 24h", "callback_data": f"dead_no_{coin['ca']}"}]]}
+                    send_telegram_alert(f"🗑 <b>DỌN RÁC:</b> Đồng <b>{coin['name']}</b> héo sau 24h, xóa không?", reply_markup=kb)
 
-        all_lists = [("AUTO", AUTO_COINS), ("MANUAL", MANUAL_COINS)]
-        for list_type, coin_list in all_lists:
-            time_frame = CONFIG[f"{list_type}_TIME_FRAME"]
-            min_buys = CONFIG[f"{list_type}_MIN_BUYS"]
-            min_bnb = CONFIG['MIN_BNB_BUY']
-            
-            for coin in list(coin_list):
-                try:
-                    ca = coin["ca"].lower()
-                    lp = coin["lp"].lower()
-                    alert_key = f"{ca}_{time_frame}"
+            all_lists = [("AUTO", AUTO_COINS), ("MANUAL", MANUAL_COINS)]
+            for list_type, coin_list in all_lists:
+                time_frame = CONFIG[f"{list_type}_TIME_FRAME"]
+                min_buys = CONFIG[f"{list_type}_MIN_BUYS"]
+                min_bnb = CONFIG['MIN_BNB_BUY']
+                
+                for coin in list(coin_list):
+                    try:
+                        ca = coin["ca"].lower()
+                        lp = coin["lp"].lower()
+                        alert_key = f"{ca}_{time_frame}"
 
-                    print(f"\n🔍 Đang soi coin: {coin['name']} (CA: {ca[:6]}...)", flush=True)
+                        print(f"\n--- Dang soi coin: {coin['name']} (CA: {ca[:6]}...) ---", flush=True)
 
-                    token_price_bnb, token_decimals = 0, 18
-                    price_url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/price?chain=bsc"
-                    price_res = requests.get(price_url, headers=get_current_headers(), timeout=10)
-                    
-                    if price_res.status_code == 200:
-                        p_data = price_res.json()
-                        token_decimals = int(p_data.get('tokenDecimals', 18))
-                        token_price_bnb = float(p_data.get("nativePrice", {}).get("value", "0")) / (10**18)
-                        print(f"   => Giá quy đổi: {token_price_bnb:.8f} BNB", flush=True)
-
-                    url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/transfers?chain=bsc&limit=100"
-                    response = requests.get(url, headers=get_current_headers(), timeout=10)
-                    
-                    if response.status_code == 200:
-                        transactions = response.json().get('result', [])
+                        token_price_bnb, token_decimals = 0, 18
+                        price_url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/price?chain=bsc"
+                        price_res = requests.get(price_url, headers=get_current_headers(), timeout=10)
                         
-                        time_ago = datetime.now(timezone.utc) - timedelta(hours=time_frame)
-                        valid_txs = sorted([tx for tx in transactions if datetime.strptime(tx['block_timestamp'][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc) >= time_ago], key=lambda x: x.get('block_timestamp', ''))
-                        
-                        suspect_wallets, terminal_holders, valid_buy_chains = {}, set(), 0
+                        if price_res.status_code == 200:
+                            p_data = price_res.json()
+                            token_decimals = int(p_data.get('tokenDecimals', 18))
+                            token_price_bnb = float(p_data.get("nativePrice", {}).get("value", "0")) / (10**18)
+                            print(f"   => Gia quy doi: {token_price_bnb:.8f} BNB", flush=True)
 
-                        for tx in valid_txs:
-                            sender, receiver, value_raw = tx.get('from_address', '').lower(), tx.get('to_address', '').lower(), int(tx.get('value', '0'))
-                            if value_raw == 0: continue
+                        url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/transfers?chain=bsc&limit=100"
+                        response = requests.get(url, headers=get_current_headers(), timeout=10)
+                        
+                        if response.status_code == 200:
+                            transactions = response.json().get('result', [])
                             
-                            tx_bnb_value = (value_raw / (10**token_decimals)) * token_price_bnb
+                            time_ago = datetime.now(timezone.utc) - timedelta(hours=time_frame)
+                            valid_txs = sorted([tx for tx in transactions if datetime.strptime(tx['block_timestamp'][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc) >= time_ago], key=lambda x: x.get('block_timestamp', ''))
+                            
+                            suspect_wallets, terminal_holders, valid_buy_chains = {}, set(), 0
 
-                            if sender == lp:
-                                if token_price_bnb > 0 and tx_bnb_value >= min_bnb:
-                                    suspect_wallets[receiver] = 0
-                                    terminal_holders.add(receiver)
-                                    valid_buy_chains += 1
-                            elif sender in suspect_wallets:
-                                current_depth = suspect_wallets[sender]
-                                if receiver == lp:
-                                    if sender in terminal_holders:
-                                        valid_buy_chains -= 1
-                                        terminal_holders.remove(sender)
-                                    del suspect_wallets[sender] 
-                                else:
-                                    if current_depth < 10:
-                                        suspect_wallets[receiver] = current_depth + 1
+                            for tx in valid_txs:
+                                sender, receiver, value_raw = tx.get('from_address', '').lower(), tx.get('to_address', '').lower(), int(tx.get('value', '0'))
+                                if value_raw == 0: continue
+                                
+                                tx_bnb_value = (value_raw / (10**token_decimals)) * token_price_bnb
+
+                                if sender == lp:
+                                    if token_price_bnb > 0 and tx_bnb_value >= min_bnb:
+                                        suspect_wallets[receiver] = 0
                                         terminal_holders.add(receiver)
-                                        if sender in terminal_holders: terminal_holders.remove(sender)
-                        
-                        print(f"   => Kết quả: {valid_buy_chains} chuỗi gom ngầm", flush=True)
-
-                        last_reported_chains = alerted_coins_state.get(alert_key, 0)
-
-                        if valid_buy_chains >= min_buys and valid_buy_chains > last_reported_chains:
-                            print(f"   🚨 BÁO ĐỘNG TỚI TELEGRAM! (Có lệnh gom mới)", flush=True)
+                                        valid_buy_chains += 1
+                                elif sender in suspect_wallets:
+                                    current_depth = suspect_wallets[sender]
+                                    if receiver == lp:
+                                        if sender in terminal_holders:
+                                            valid_buy_chains -= 1
+                                            terminal_holders.remove(sender)
+                                        del suspect_wallets[sender] 
+                                    else:
+                                        if current_depth < 10:
+                                            suspect_wallets[receiver] = current_depth + 1
+                                            terminal_holders.add(receiver)
+                                            if sender in terminal_holders: terminal_holders.remove(sender)
                             
-                            alerted_coins_state[alert_key] = valid_buy_chains
+                            print(f"   => Ket qua: {valid_buy_chains} chuoi gom ngam", flush=True)
 
-                            holders_details = []
-                            for w in list(terminal_holders)[:3]:
-                                if w not in suspect_wallets: continue
-                                depth = suspect_wallets[w]
+                            last_reported_chains = alerted_coins_state.get(alert_key, 0)
+
+                            if valid_buy_chains >= min_buys and valid_buy_chains > last_reported_chains:
+                                print(f"   => BAO DONG TOI TELEGRAM! (Co lenh gom moi)", flush=True)
                                 
-                                buy_amounts_bnb = []
-                                for t in transactions:
-                                    if t.get('from_address', '').lower() == lp and t.get('to_address', '').lower() == w:
-                                        val_raw = int(t.get('value', '0'))
-                                        val_bnb = (val_raw / (10**token_decimals)) * token_price_bnb
-                                        if val_bnb > 0:
-                                            buy_amounts_bnb.append(f"{val_bnb:.2f}")
-                                            
-                                lifetime_buys = len(buy_amounts_bnb)
-                                buys_str = ", ".join(buy_amounts_bnb) if buy_amounts_bnb else "0"
+                                alerted_coins_state[alert_key] = valid_buy_chains
+
+                                holders_details = []
+                                for w in list(terminal_holders)[:3]:
+                                    if w not in suspect_wallets: continue
+                                    depth = suspect_wallets[w]
+                                    
+                                    buy_amounts_bnb = []
+                                    for t in transactions:
+                                        if t.get('from_address', '').lower() == lp and t.get('to_address', '').lower() == w:
+                                            val_raw = int(t.get('value', '0'))
+                                            val_bnb = (val_raw / (10**token_decimals)) * token_price_bnb
+                                            if val_bnb > 0:
+                                                buy_amounts_bnb.append(f"{val_bnb:.2f}")
+                                                
+                                    lifetime_buys = len(buy_amounts_bnb)
+                                    buys_str = ", ".join(buy_amounts_bnb) if buy_amounts_bnb else "0"
+                                    
+                                    bnb_balance = 0
+                                    try:
+                                        bal_url = f"https://deep-index.moralis.io/api/v2.2/{w}/balance?chain=bsc"
+                                        bal_res = requests.get(bal_url, headers=get_current_headers(), timeout=5)
+                                        if bal_res.status_code == 200:
+                                            bnb_balance = int(bal_res.json().get('balance', '0')) / (10**18)
+                                    except: pass
+
+                                    token_hold_balance = 0
+                                    try:
+                                        tk_url = f"https://deep-index.moralis.io/api/v2.2/{w}/erc20?chain=bsc&token_addresses={ca}"
+                                        tk_res = requests.get(tk_url, headers=get_current_headers(), timeout=5)
+                                        if tk_res.status_code == 200:
+                                            tk_data = tk_res.json()
+                                            if tk_data and len(tk_data) > 0:
+                                                token_hold_balance = float(tk_data[0].get('balance', '0')) / (10**token_decimals)
+                                    except: pass
+                                    
+                                    holders_details.append(
+                                        f"💳 <code>{w}</code> (Đời F{depth})\n"
+                                        f"   ├ Dư (Gas): <b>{bnb_balance:.4f} BNB</b>\n"
+                                        f"   ├ Đang Hold: <b>{token_hold_balance:,.2f} {coin['name']}</b>\n"
+                                        f"   └ Đã mua: <b>{lifetime_buys} lệnh</b> [{buys_str} BNB]"
+                                    )
                                 
-                                bnb_balance = 0
-                                try:
-                                    bal_url = f"https://deep-index.moralis.io/api/v2.2/{w}/balance?chain=bsc"
-                                    bal_res = requests.get(bal_url, headers=get_current_headers(), timeout=5)
-                                    if bal_res.status_code == 200:
-                                        bnb_balance = int(bal_res.json().get('balance', '0')) / (10**18)
-                                except: pass
-
-                                token_hold_balance = 0
-                                try:
-                                    tk_url = f"https://deep-index.moralis.io/api/v2.2/{w}/erc20?chain=bsc&token_addresses={ca}"
-                                    tk_res = requests.get(tk_url, headers=get_current_headers(), timeout=5)
-                                    if tk_res.status_code == 200:
-                                        tk_data = tk_res.json()
-                                        if tk_data and len(tk_data) > 0:
-                                            token_hold_balance = float(tk_data[0].get('balance', '0')) / (10**token_decimals)
-                                except: pass
+                                holders_str = "\n".join(holders_details)
+                                sec_info = format_bsc_security(ca)
                                 
-                                holders_details.append(
-                                    f"💳 <code>{w}</code> (Đời F{depth})\n"
-                                    f"   ├ Dư (Gas): <b>{bnb_balance:.4f} BNB</b>\n"
-                                    f"   ├ Đang Hold: <b>{token_hold_balance:,.2f} {coin['name']}</b>\n"
-                                    f"   └ Đã mua: <b>{lifetime_buys} lệnh</b> [{buys_str} BNB]"
-                                )
-                            
-                            holders_str = "\n".join(holders_details)
-                            sec_info = format_bsc_security(ca)
-                            
-                            msg = (f"💎 <b>CÁ MẬP BSC GOM HÀNG ({list_type})</b>\n\n"
-                                   f"🪙 <b>Coin:</b> {coin['name']} | CA: <code>{ca}</code>\n"
-                                   f"🎯 <b>Cập nhật:</b> Đã lên tới {valid_buy_chains} đường dây gom >= {min_bnb} BNB!\n"
-                                   f"🕵️‍♂️ <b>Hồ sơ Ví cuối đang găm hàng:</b>\n{holders_str}\n\n"
-                                   f"✅ Bot xác nhận: Tuyệt đối chưa xả hàng!\n{sec_info}")
-                            send_telegram_alert(msg)
+                                msg = (f"💎 <b>CÁ MẬP BSC GOM HÀNG ({list_type})</b>\n\n"
+                                       f"🪙 <b>Coin:</b> {coin['name']} | CA: <code>{ca}</code>\n"
+                                       f"🎯 <b>Cập nhật:</b> Đã lên tới {valid_buy_chains} đường dây gom >= {min_bnb} BNB!\n"
+                                       f"🕵️‍♂️ <b>Hồ sơ Ví cuối đang găm hàng:</b>\n{holders_str}\n\n"
+                                       f"✅ Bot xác nhận: Tuyệt đối chưa xả hàng!\n{sec_info}")
+                                send_telegram_alert(msg)
 
-                        elif valid_buy_chains < last_reported_chains:
-                            alerted_coins_state[alert_key] = valid_buy_chains
-                            
-                    else:
-                        print(f"   ❌ LỖI GIAO DỊCH: HTTP {response.status_code}", flush=True)
+                            elif valid_buy_chains < last_reported_chains:
+                                alerted_coins_state[alert_key] = valid_buy_chains
+                                
+                        else:
+                            print(f"   => LOI GIAO DICH: HTTP {response.status_code}", flush=True)
 
-                except Exception as e:
-                    print(f"   ⚠️ LỖI TRONG CODE: {e}", flush=True)
-                time.sleep(2) 
-        time.sleep(15) 
+                    except Exception as e:
+                        print(f"   => LOI TRONG CODE: {e}", flush=True)
+                    time.sleep(2) 
+            time.sleep(15) 
+
+    except Exception as e:
+        print(f"CRITICAL THREAD CRASH: {e}")
+        traceback.print_exc()
 
 # --- ĐẢM BẢO RENDER CHẠY LUỒNG NGẦM ---
 Thread(target=listen_telegram_commands, daemon=True).start()
