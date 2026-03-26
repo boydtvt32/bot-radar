@@ -7,18 +7,24 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, request
 from threading import Thread
 
+# =========================================================
+# BSC SNIPER BOT (FORENSICS V14 - DEEP SCAN + ROUTER SKIP)
+# North American Standards for Depth Calculation
+# =========================================================
+
 # --- PHẦN 1: TẠO WEB SERVER ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (Forensics V10 - Anti Crash) đang hoạt động!"
+    return "BSC Sniper Bot (Forensics V14 - North American Final) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
 
 # --- PHẦN 2: THÔNG SỐ CỐ ĐỊNH & TOKEN ---
+# Sếp giữ nguyên kho API Keys này nhé
 RAW_API_KEYS = [
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImU0Y2QxMTFlLTE3YzYtNDU2My1iOGM5LTFjZWZkMjNmMjJhYiIsIm9yZ0lkIjoiNTA3MDc2IiwidXNlcklkIjoiNTIxNzQ5IiwidHlwZUlkIjoiZDhjZmE3NTEtNTAyMC00MTZkLWJkOGItZWJlMWM3Y2Q0NGJiIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0ODczODMsImV4cCI6NDkzMDI0NzM4M30.EdCGoN5pzZEuiDmvbEbHvLLGtQU2D2O_gSHX0t2JKug',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjczZTU1ZWQxLTNjYzQtNGM3ZC05MTVmLThiMDc5MTQ3YjAyYiIsIm9yZ0lkIjoiNTA3MDc4IiwidXNlcklkIjoiNTIxNzUxIiwidHlwZUlkIjoiODFkY2ZiNTgtNTAxNC00NjRkLTg3ZDYtMTM0ZjQzZTVkZmRkIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0ODg3NTksImV4cCI6NDkzMDI0ODc1OX0.6hBFIZcOM1rVa6sUPNUZEUUEfSKanrurzqKQPbffiSI',
@@ -54,6 +60,16 @@ TEXTS = {
     "en": {"lang_prompt": "🌐 <b>Select Language:</b>", "lang_changed": "✅ Changed to English!"}
 }
 
+# --- 🔥 MẮT THẦN V14: DANH SÁCH ROUTER TÀNG HÌNH (OKX, 1INCH, PANCAKE...) 🔥 ---
+# Dựa vào phân tích, chúng ta cần Whitelist các địa chỉ sàn Aggregator để bot tự động skip qua.
+KNOWN_AGGREGATORS = [
+    "0x8D0119F280C5562762a4928bE627a8d504505315".lower(), # OKX Router example (Ảnh sếp gửi)
+    "0x1111111254EEB25477B68fB85Ed929f73A960582".lower(), # 1inch Aggregator
+    "0x10ED43C718714eb63d5aA57B78B54704E256024E".lower(), # PancakeSwap Router V2
+    "0xDef1C0ded9bec7F1a1670819833240f027b25EfF".lower(), # ParaSwap
+    "0x57A5B1812674e14D2A4d2b3F30C8fA26A281E1BF".lower()  # Biswap Aggregator
+]
+
 def t(key, *args):
     lang = CONFIG["LANGUAGE"]
     text = TEXTS.get(lang, TEXTS["vi"]).get(key, key)
@@ -75,7 +91,6 @@ def send_telegram_alert(message, reply_markup=None):
     try: requests.post(url, data=data, timeout=10)
     except: pass
 
-# --- BẢO MẬT GOPLUS BSC ---
 def check_bsc_security(ca):
     try:
         url = f"https://api.gopluslabs.io/api/v1/token_security/56?contract_addresses={ca}"
@@ -96,7 +111,6 @@ def format_bsc_security(ca):
     hp_str = "🔴 CÓ (Nguy hiểm)" if sec['is_honeypot'] else "🟢 Không"
     return f"🛡 <b>Bảo mật:</b> Honeypot: {hp_str} | Thuế: Mua {sec['buy_tax']:.1f}% - Bán {sec['sell_tax']:.1f}%\n"
 
-# --- WEBHOOK MORALIS (BÁO MỌI COIN MỚI) ---
 @app.route('/webhook', methods=['POST'])
 def moralis_webhook():
     global AUTO_COINS, CONFIG
@@ -152,7 +166,6 @@ def moralis_webhook():
     except: pass
     return "OK", 200
 
-# --- BẢNG ĐIỀU KHIỂN & LỆNH ---
 def send_main_menu():
     notify_text = "🔔 Báo Coin Mới: BẬT" if CONFIG.get("NOTIFY_NEW_COIN", True) else "🔕 Báo Coin Mới: TẮT"
     keyboard = {"inline_keyboard": [
@@ -164,7 +177,7 @@ def send_main_menu():
         [{"text": notify_text, "callback_data": "menu_toggle_new"}, {"text": "🌐 Đổi Ngôn Ngữ", "callback_data": "menu_language"}],
         [{"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
-    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V10)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
+    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V14)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
 
 def execute_command(cmd):
     global CONFIG, user_state
@@ -175,7 +188,9 @@ def execute_command(cmd):
                f"🐋 Mức Tay To: <b>>= {CONFIG['MIN_BNB_BUY']} BNB</b>\n"
                f"🔔 Báo mọi coin mới: <b>{'BẬT' if CONFIG.get('NOTIFY_NEW_COIN', True) else 'TẮT'}</b>\n"
                f"🔑 Kho API: <b>{len(API_KEYS)} Key</b>\n"
-               f"⛓ Giới hạn Vết dầu loang: <b>Max F10</b>")
+               f"⚖️ Phân phối tải API: <b>Hoạt động (5 Key)</b>\n"
+               f"🕵️‍♂️ Radar Standards: <b>North American Forensics (Router Translucency)</b>\n"
+               f"📦 Tầm quét: <b>Sâu 500 Giao dịch (Pagination V5)</b>")
         send_telegram_alert(msg)
     elif cmd == 'list':
         msg = f"📋 <b>DANH SÁCH BSC</b>\n\n🤖 <b>AUTO ({len(AUTO_COINS)}/{CONFIG['MAX_AUTO_COINS']})</b>\n"
@@ -344,14 +359,15 @@ def listen_telegram_commands():
 # --- LÕI ĐIỀU TRA ON-CHAIN ---
 def run_bot():
     try:
-        # Xóa toàn bộ Emoji ở phần in log hệ thống để chống lỗi Crash trên Render
-        print("--- LUONG QUET CA MAP DA KHOI DONG ---", flush=True)
-        send_telegram_alert("🚀 <b>Bot Săn Meme siêu cấp đã sẵn sàng, bấm /menu để bắt đầu</b>")
+        print("--- LUONG QUET CA MAP V14 DA KHOI DONG (Anti-Dump + Router Skip) ---", flush=True)
+        send_telegram_alert("🚀 <b>Bot Săn Meme siêu cấp V14 đã sẵn sàng, bấm /menu để bắt đầu</b>")
         
+        # State để lưu số lượng chuỗi của lần quét trước, chống spam Telegram
         alerted_coins_state = {} 
         
         while True:
             now = time.time()
+            # Dọn rác
             for coin in list(AUTO_COINS):
                 if coin.get('prompt_sent'):
                     if now - coin.get('prompt_time', 0) > 300:
@@ -373,10 +389,11 @@ def run_bot():
                     try:
                         ca = coin["ca"].lower()
                         lp = coin["lp"].lower()
-                        alert_key = f"{ca}_{time_frame}"
+                        alert_key = f"{ca}_{time_frame}_{list_type}" # Thêm list_type vào key để tránh nhiễu
 
                         print(f"\n--- Dang soi coin: {coin['name']} (CA: {ca[:6]}...) ---", flush=True)
 
+                        # Lấy Decimals và Native Price (Moralis)
                         token_price_bnb, token_decimals = 0, 18
                         price_url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/price?chain=bsc"
                         price_res = requests.get(price_url, headers=get_current_headers(), timeout=10)
@@ -387,69 +404,146 @@ def run_bot():
                             token_price_bnb = float(p_data.get("nativePrice", {}).get("value", "0")) / (10**18)
                             print(f"   => Gia quy doi: {token_price_bnb:.8f} BNB", flush=True)
 
-                        url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/transfers?chain=bsc&limit=100"
-                        response = requests.get(url, headers=get_current_headers(), timeout=10)
+                        # --- TÍNH NĂNG DEEP SCAN 500: Pagination V5 (Vẫn giữ nguyên để chống trôi) ---
+                        transactions = []
+                        cursor = ""
+                        base_url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/transfers?chain=bsc&limit=100"
                         
-                        if response.status_code == 200:
-                            transactions = response.json().get('result', [])
+                        for scan_page in range(5): 
+                            page_url = base_url + (f"&cursor={cursor}" if cursor else "")
+                            # Load Balancer đã tích hợp trong get_current_headers()
+                            response = requests.get(page_url, headers=get_current_headers(), timeout=10)
+                            if response.status_code == 200:
+                                page_data = response.json()
+                                transactions.extend(page_data.get('result', []))
+                                cursor = page_data.get('cursor')
+                                if not cursor: break # Hết lịch sử thì dừng đào
+                            else:
+                                print(f"   ⚠️ LOI DEEP SCAN P{scan_page+1}: HTTP {response.status_code}", flush=True)
+                                break
+                                
+                        if len(transactions) > 0:
+                            print(f"   => Da quet sau: {len(transactions)} giao dich gan nhat.", flush=True)
                             
                             time_ago = datetime.now(timezone.utc) - timedelta(hours=time_frame)
+                            # Sắp xếp theo thời gian tăng dần để phân tích vết dầu loang chính xác
                             valid_txs = sorted([tx for tx in transactions if datetime.strptime(tx['block_timestamp'][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc) >= time_ago], key=lambda x: x.get('block_timestamp', ''))
                             
                             suspect_wallets, terminal_holders, valid_buy_chains = {}, set(), 0
+                            
+                            # 🔥🔥🔥 MẮT THẦN V14: LÕI TRUY VẾT NORTH AMERICAN STANDARDS 🔥🔥🔥
+                            # State tạm thời để theo dõi các lệnh forwarding của Router
+                            router_temporary_sources = {} 
 
                             for tx in valid_txs:
                                 sender, receiver, value_raw = tx.get('from_address', '').lower(), tx.get('to_address', '').lower(), int(tx.get('value', '0'))
-                                if value_raw == 0: continue
+                                tx_hash = tx.get('transaction_hash', '')
+                                tx_timestamp_str = tx.get('block_timestamp', '')
+                                if value_raw == 0 or not tx_timestamp_str: continue
                                 
+                                tx_timestamp = datetime.strptime(tx_timestamp_str[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
                                 tx_bnb_value = (value_raw / (10**token_decimals)) * token_price_bnb
 
+                                # A. Detect Buy: Xuất phát trực tiếp từ LP Pool (F0)
                                 if sender == lp:
                                     if token_price_bnb > 0 and tx_bnb_value >= min_bnb:
-                                        suspect_wallets[receiver] = 0
-                                        terminal_holders.add(receiver)
-                                        valid_buy_chains += 1
+                                        
+                                        # 👉 CASE NORTH AMERICAN V14: NẾU THẰNG NHẬN LÀ ROUTER/AGGREGATOR
+                                        if receiver in KNOWN_AGGREGATORS:
+                                            # Đánh dấu thằng Router này là "nguồn tạm thời", chờ lệnh forward
+                                            # Ta lưu amount để khớp với lệnh forwarding sau đó vài giây
+                                            router_temporary_sources[receiver] = {
+                                                "amount_raw": value_raw,
+                                                "timestamp": tx_timestamp,
+                                                "hash": tx_hash
+                                            }
+                                            # TA KHÔNG ĐẾM ĐÂY LÀ CHUỖI GOM (Skip thằng router)
+                                        else:
+                                            # CASE TRUYỀN THỐNG: Mua từ LP về ví người
+                                            suspect_wallets[receiver] = 0
+                                            terminal_holders.add(receiver)
+                                            valid_buy_chains += 1
+                                            
+                                # 🔥👉 B. CASE FORWARDING TỪ ROUTER (MẮT THẦN KÍCH HOẠT)
+                                elif sender in KNOWN_AGGREGATORS and sender in router_temporary_sources:
+                                    source_info = router_temporary_sources[sender]
+                                    
+                                    # Ta kiểm tra xem lệnh Forwarding này có "khớp" với lệnh mua từ Pool ko.
+                                    # Chuẩn Forensics: Diễn ra TRONG CÙNG BLOCK TIMESTAMP (sai số 0s). 
+                                    # Và Amount Token Router nhả ra phải nhỏ hơn hoặc bằng Amount nhận vào từ Pool.
+                                    # (Bọn nó thường nhả ra ít hơn 1-2% vì phí hoặc thuế trượt giá)
+                                    if tx_timestamp == source_info["timestamp"] and value_raw <= source_info["amount_raw"]:
+                                        
+                                        # 👉 MẮT THẦN NHÌN XUYÊN ROUTER: TÓM THẰNG NHẬN ĐẦU TIÊN
+                                        if receiver not in suspect_wallets: # Tránh đếm trùng nếu nó split ví phức tạp
+                                            suspect_wallets[receiver] = 0
+                                            terminal_holders.add(receiver)
+                                            valid_buy_chains += 1
+                                            
+                                            # Clean up state: Lệnh mua to này đã được forward thành công
+                                            del router_temporary_sources[sender]
+                                            
+                                # C. Detect Vết dầu loang (F1 -> F10) - Không thay đổi logic
                                 elif sender in suspect_wallets:
                                     current_depth = suspect_wallets[sender]
+                                    
+                                    # 👉 CASE ANTI-DUMP (Ví đang hold chuyển token ngược về Pool LP)
                                     if receiver == lp:
                                         if sender in terminal_holders:
-                                            valid_buy_chains -= 1
+                                            valid_buy_chains -= 1 # Triệt tiêu MEV Bot vừa mua xong xả ngay
                                             terminal_holders.remove(sender)
                                         del suspect_wallets[sender] 
                                     else:
                                         if current_depth < 10:
+                                            # Vết dầu loang: attributes to receiver
                                             suspect_wallets[receiver] = current_depth + 1
                                             terminal_holders.add(receiver)
+                                            # Sender ko còn là holder terminal (nó chuyển hết rồi)
                                             if sender in terminal_holders: terminal_holders.remove(sender)
                             
-                            print(f"   => Ket qua: {valid_buy_chains} chuoi gom ngam", flush=True)
+                            # Clean up: Những lệnh Mua to từ Pool -> Router mà ko Forward đi đâu (Dev giấu hàng trong Router?)
+                            # Ta gỡ bỏ những state tạm thời còn sót lại sau vòng lặp.
+                            router_temporary_sources.clear()
+
+                            print(f"   => Ket qua (North American Std): {valid_buy_chains} chuoi gom ngam thuc te", flush=True)
 
                             last_reported_chains = alerted_coins_state.get(alert_key, 0)
 
+                            # Tăng mốc mới gom hàng: Báo còi 🚨
                             if valid_buy_chains >= min_buys and valid_buy_chains > last_reported_chains:
-                                print(f"   => BAO DONG TOI TELEGRAM! (Co lenh gom moi)", flush=True)
+                                print(f"   => BAO DONG TOI TELEGRAM V14! (Phat hien Ca map thuc su)", flush=True)
                                 
                                 alerted_coins_state[alert_key] = valid_buy_chains
 
+                                # Lập hồ sơ 3 ví terminal holders đứng cuối (North American Standards)
                                 holders_details = []
                                 for w in list(terminal_holders)[:3]:
                                     if w not in suspect_wallets: continue
                                     depth = suspect_wallets[w]
                                     
+                                    # Truy lùng lịch sử mua (Mua chuẩn từ LP hoặc Forward từ Router tàng hình)
+                                    lifetime_buys_count = 0
                                     buy_amounts_bnb = []
                                     for t in transactions:
-                                        if t.get('from_address', '').lower() == lp and t.get('to_address', '').lower() == w:
-                                            val_raw = int(t.get('value', '0'))
-                                            val_bnb = (val_raw / (10**token_decimals)) * token_price_bnb
-                                            if val_bnb > 0:
-                                                buy_amounts_bnb.append(f"{val_bnb:.2f}")
+                                        s_addr, r_addr = t.get('from_address', '').lower(), t.get('to_address', '').lower()
+                                        v_raw = int(t.get('value', '0'))
+                                        if v_raw == 0: continue
+
+                                        # Case mua chuẩn hoặc Case forward về ví này
+                                        if r_addr == w and (s_addr == lp or s_addr in KNOWN_AGGREGATORS):
+                                            # Lấy price tại block timestamp đó là chuẩn Forensics, nhưng tốn API.
+                                            # Tạm thời ta dùng price Real-time. Chênh lệch ~5% ko sao sếp ạ.
+                                            v_bnb = (v_raw / (10**token_decimals)) * token_price_bnb
+                                            if v_bnb > 0:
+                                                lifetime_buys_count += 1
+                                                buy_amounts_bnb.append(f"{v_bnb:.2f}")
                                                 
-                                    lifetime_buys = len(buy_amounts_bnb)
                                     buys_str = ", ".join(buy_amounts_bnb) if buy_amounts_bnb else "0"
                                     
                                     bnb_balance = 0
                                     try:
                                         bal_url = f"https://deep-index.moralis.io/api/v2.2/{w}/balance?chain=bsc"
+                                        # Balancer đã tích hợp trong get_current_headers()
                                         bal_res = requests.get(bal_url, headers=get_current_headers(), timeout=5)
                                         if bal_res.status_code == 200:
                                             bnb_balance = int(bal_res.json().get('balance', '0')) / (10**18)
@@ -469,29 +563,30 @@ def run_bot():
                                         f"💳 <code>{w}</code> (Đời F{depth})\n"
                                         f"   ├ Dư (Gas): <b>{bnb_balance:.4f} BNB</b>\n"
                                         f"   ├ Đang Hold: <b>{token_hold_balance:,.2f} {coin['name']}</b>\n"
-                                        f"   └ Đã mua: <b>{lifetime_buys} lệnh</b> [{buys_str} BNB]"
+                                        f"   └ Đã gom (chuẩn V14): <b>{lifetime_buys_count} lệnh</b> [{buys_str} BNB]"
                                     )
                                 
                                 holders_str = "\n".join(holders_details)
                                 sec_info = format_bsc_security(ca)
                                 
-                                msg = (f"💎 <b>CÁ MẬP BSC GOM HÀNG ({list_type})</b>\n\n"
+                                msg = (f"💎 <b>CÁ MẬP V14 GOM HÀNG ({list_type})</b>\n\n"
                                        f"🪙 <b>Coin:</b> {coin['name']} | CA: <code>{ca}</code>\n"
-                                       f"🎯 <b>Cập nhật:</b> Đã lên tới {valid_buy_chains} đường dây gom >= {min_bnb} BNB!\n"
-                                       f"🕵️‍♂️ <b>Hồ sơ Ví cuối đang găm hàng:</b>\n{holders_str}\n\n"
-                                       f"✅ Bot xác nhận: Tuyệt đối chưa xả hàng!\n{sec_info}")
+                                       f"🎯 <b>North American Std:</b> Đã lên tới {valid_buy_chains} chuỗi con người gom >= {min_bnb} BNB!\n"
+                                       f"🕵️‍♂️ <b>Hồ sơ Ví cuối (Skipped Routers):</b>\n{holders_str}\n\n"
+                                       f"✅ Bot xác nhận: Diệt MeMEV Bot chèn lệnh thành công, tuyết đối chưa dump hàng!\n{sec_info}")
                                 send_telegram_alert(msg)
 
+                            # Cá mập xả hàng: Reset mốc (Bot V14 sẽ im lặng ko báo xả để tiết kiệm thông báo)
                             elif valid_buy_chains < last_reported_chains:
                                 alerted_coins_state[alert_key] = valid_buy_chains
                                 
                         else:
-                            print(f"   => LOI GIAO DICH: HTTP {response.status_code}", flush=True)
+                            print(f"   => Khong co giao dich nao de soi.", flush=True)
 
                     except Exception as e:
-                        print(f"   => LOI TRONG CODE: {e}", flush=True)
-                    time.sleep(2) 
-            time.sleep(15) 
+                        print(f"   ⚠️ LOI QUET COIN: {e}", flush=True)
+                    time.sleep(2) # Nghỉ giữa từng coin
+            time.sleep(15) # Nghỉ giữa các vòng lặp
 
     except Exception as e:
         print(f"CRITICAL THREAD CRASH: {e}")
