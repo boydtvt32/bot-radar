@@ -11,18 +11,24 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (Forensics V5 - Check Wallets) đang hoạt động!"
+    return "BSC Sniper Bot (Forensics V6 - Bóc Ví Cá Mập) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
 
 # --- PHẦN 2: THÔNG SỐ CỐ ĐỊNH & TOKEN ---
-API_KEYS = [
+# Kho chứa API Key của sếp (Đã nạp full dàn key mới nhất)
+RAW_API_KEYS = [
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImU0Y2QxMTFlLTE3YzYtNDU2My1iOGM5LTFjZWZkMjNmMjJhYiIsIm9yZ0lkIjoiNTA3MDc2IiwidXNlcklkIjoiNTIxNzQ5IiwidHlwZUlkIjoiZDhjZmE3NTEtNTAyMC00MTZkLWJkOGItZWJlMWM3Y2Q0NGJiIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0ODczODMsImV4cCI6NDkzMDI0NzM4M30.EdCGoN5pzZEuiDmvbEbHvLLGtQU2D2O_gSHX0t2JKug',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjczZTU1ZWQxLTNjYzQtNGM3ZC05MTVmLThiMDc5MTQ3YjAyYiIsIm9yZ0lkIjoiNTA3MDc4IiwidXNlcklkIjoiNTIxNzUxIiwidHlwZUlkIjoiODFkY2ZiNTgtNTAxNC00NjRkLTg3ZDYtMTM0ZjQzZTVkZmRkIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0ODg3NTksImV4cCI6NDkzMDI0ODc1OX0.6hBFIZcOM1rVa6sUPNUZEUUEfSKanrurzqKQPbffiSI',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjVkZTJkNDIzLTY4NmItNDQ1ZS1iNjQ3LTBjNDA5Y2NhZjhiOCIsIm9yZ0lkIjoiNTA3MDc5IiwidXNlcklkIjoiNTIxNzUyIiwidHlwZUlkIjoiMGZhMWU1ZTItYTE1Ny00ODc5LTkxNzktZDA5ZmNlNGJkZjY3IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0ODkxNDUsImV4cCI6NDkzMDI0OTE0NX0.iSlSkU4z_HtWHRQAPRl0H6ZcX1jBbusE9dxjGdIqNp0',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjM3NWFiODUxLWJkN2ItNGRjYy05OWU4LTY3YWExZTY5NjVmNyIsIm9yZ0lkIjoiNTA2NzE3IiwidXNlcklkIjoiNTIxMzgxIiwidHlwZUlkIjoiZTkzYzUwZjctOGI2ZC00ZDkyLTk4MDItMGIyNDllMTUzMzNiIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQyNTkyNjEsImV4cCI6NDkzMDAxOTI2MX0.-ERcEVFm28TLwIr5udsgMWBAvaUaHf5cf5Qd0vLzb18',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImUzYzYyNzRhLWMxZGItNDhlYS1hMjkxLWMzZGQ0YTU0YmM0NiIsIm9yZ0lkIjoiNTA3MDI0IiwidXNlcklkIjoiNTIxNjk2IiwidHlwZUlkIjoiMGExM2FmMGEtNDU2Yi00YTgwLWE0ZjMtZjNlZTc4N2Q0N2M1IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzQ0NTYyMzEsImV4cCI6NDkzMDIxNjIzMX0.gCOXCBjaTjWSo5XskcX4jdvo5fZDptZ-VsI6NuQZwvY'
 ]
+
+# Tự động lọc trùng lặp API Key
+API_KEYS = list(set(RAW_API_KEYS))
 
 TELEGRAM_BOT_TOKEN = '8526113763:AAH3wANXx126AloxzAKJQrKJAPWiQm7Kb6Q'
 TELEGRAM_CHAT_ID = '1976782751'
@@ -125,7 +131,7 @@ def send_main_menu():
         [{"text": "🔑 Kho API Keys", "callback_data": "menu_keys"}, {"text": "➕ Nạp API Key", "callback_data": "menu_add_key"}],
         [{"text": "🌐 Đổi Ngôn Ngữ", "callback_data": "menu_language"}, {"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
-    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V5)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
+    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V6)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
 
 def execute_command(cmd):
     global CONFIG, user_state
@@ -178,7 +184,7 @@ def execute_command(cmd):
         send_telegram_alert("🚫 Đã hủy thao tác.")
 
 def process_update(item):
-    global AUTO_COINS, MANUAL_COINS, CONFIG, user_state, API_KEYS
+    global AUTO_COINS, MANUAL_COINS, CONFIG, user_state, API_KEYS, RAW_API_KEYS
     try:
         if "callback_query" in item:
             data = item["callback_query"]["data"]
@@ -250,8 +256,10 @@ def process_update(item):
                         user_state.clear()
                     except: send_telegram_alert("❌ Nhập số nguyên.")
                 elif step == 'WAITING_ADD_KEY':
-                    if text not in API_KEYS: API_KEYS.append(text)
-                    send_telegram_alert(f"✅ Thêm Key thành công. Tổng: {len(API_KEYS)}")
+                    if text not in RAW_API_KEYS: 
+                        RAW_API_KEYS.append(text)
+                        API_KEYS.append(text)
+                    send_telegram_alert(f"✅ Thêm Key thành công. Tổng số Key không trùng lặp: {len(API_KEYS)}")
                     user_state.clear()
                 elif step.startswith('WAITING_TIME_VAL_'):
                     try:
@@ -330,7 +338,7 @@ def run_bot():
                     
                     if response.status_code == 200:
                         transactions = response.json().get('result', [])
-                        print(f"   => Lấy được {len(transactions)} giao dịch. Phân tích Vết Dầu Loang...", flush=True)
+                        print(f"   => Lấy được {len(transactions)} giao dịch. Phân tích...", flush=True)
                         
                         time_ago = datetime.now(timezone.utc) - timedelta(hours=time_frame)
                         valid_txs = sorted([tx for tx in transactions if datetime.strptime(tx['block_timestamp'][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc) >= time_ago], key=lambda x: x.get('block_timestamp', ''))
@@ -361,21 +369,30 @@ def run_bot():
                                         terminal_holders.add(receiver)
                                         if sender in terminal_holders: terminal_holders.remove(sender)
                         
-                        print(f"   => Kết quả: {valid_buy_chains} chuỗi gom ngầm (Yêu cầu: {min_buys})", flush=True)
+                        print(f"   => Kết quả: {valid_buy_chains} chuỗi gom ngầm", flush=True)
 
                         if valid_buy_chains >= min_buys:
                             print(f"   🚨 BÁO ĐỘNG TỚI TELEGRAM!", flush=True)
                             
-                            # --- NÂNG CẤP MỚI: CHECK LỊCH SỬ LỆNH & SỐ DƯ BNB ---
+                            # BÓC TÚI CÁ MẬP (Holders Details)
                             holders_details = []
                             for w in list(terminal_holders)[:3]:
                                 if w not in suspect_wallets: continue
                                 depth = suspect_wallets[w]
                                 
-                                # Đếm tổng số lệnh mua TRỰC TIẾP từ Pool trong toàn bộ lịch sử lấy được
-                                lifetime_buys = sum(1 for t in transactions if t.get('from_address', '').lower() == lp and t.get('to_address', '').lower() == w)
+                                # 1. Trích xuất từng lệnh mua từ Pool
+                                buy_amounts_bnb = []
+                                for t in transactions:
+                                    if t.get('from_address', '').lower() == lp and t.get('to_address', '').lower() == w:
+                                        val_raw = int(t.get('value', '0'))
+                                        val_bnb = (val_raw / (10**token_decimals)) * token_price_bnb
+                                        if val_bnb > 0:
+                                            buy_amounts_bnb.append(f"{val_bnb:.2f}")
+                                            
+                                lifetime_buys = len(buy_amounts_bnb)
+                                buys_str = ", ".join(buy_amounts_bnb) if buy_amounts_bnb else "0"
                                 
-                                # Query nhanh số dư BNB của ví này
+                                # 2. Check số dư BNB ví đang có
                                 bnb_balance = 0
                                 try:
                                     bal_url = f"https://deep-index.moralis.io/api/v2.2/{w}/balance?chain=bsc"
@@ -383,12 +400,23 @@ def run_bot():
                                     if bal_res.status_code == 200:
                                         bnb_balance = int(bal_res.json().get('balance', '0')) / (10**18)
                                 except: pass
+
+                                # 3. Check số dư Token (Coin đang soi) ví đang Hold
+                                token_hold_balance = 0
+                                try:
+                                    tk_url = f"https://deep-index.moralis.io/api/v2.2/{w}/erc20?chain=bsc&token_addresses={ca}"
+                                    tk_res = requests.get(tk_url, headers=get_current_headers(), timeout=5)
+                                    if tk_res.status_code == 200:
+                                        tk_data = tk_res.json()
+                                        if tk_data and len(tk_data) > 0:
+                                            token_hold_balance = float(tk_data[0].get('balance', '0')) / (10**token_decimals)
+                                except: pass
                                 
-                                # Thêm thông tin vào tin nhắn
                                 holders_details.append(
                                     f"💳 <code>{w}</code> (Đời F{depth})\n"
-                                    f"   ├ Số dư ví: <b>{bnb_balance:.4f} BNB</b>\n"
-                                    f"   └ Đã mua trực tiếp từ Pool: <b>{lifetime_buys} lệnh</b>"
+                                    f"   ├ Dư (Gas): <b>{bnb_balance:.4f} BNB</b>\n"
+                                    f"   ├ Đang Hold: <b>{token_hold_balance:,.2f} {coin['name']}</b>\n"
+                                    f"   └ Đã mua: <b>{lifetime_buys} lệnh</b> [{buys_str} BNB]"
                                 )
                             
                             holders_str = "\n".join(holders_details)
@@ -397,7 +425,7 @@ def run_bot():
                             msg = (f"💎 <b>CÁ MẬP BSC GOM HÀNG ({list_type})</b>\n\n"
                                    f"🪙 <b>Coin:</b> {coin['name']} | CA: <code>{ca}</code>\n"
                                    f"🎯 <b>Phát hiện:</b> {valid_buy_chains} đường dây gom >= {min_bnb} BNB!\n"
-                                   f"🕵️‍♂️ <b>Ví cuối đang găm hàng (Max F10):</b>\n{holders_str}\n\n"
+                                   f"🕵️‍♂️ <b>Hồ sơ Ví cuối đang găm hàng:</b>\n{holders_str}\n\n"
                                    f"✅ Bot xác nhận: Tuyệt đối chưa xả hàng!\n{sec_info}")
                             send_telegram_alert(msg)
                             alerted_coins.add(alert_key)
