@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (Forensics V2) đang hoạt động!"
+    return "BSC Sniper Bot (Forensics V3 - Triple Filter) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
@@ -33,7 +33,8 @@ CONFIG = {
     "AUTO_TIME_FRAME": 2,    
     "AUTO_MIN_BUYS": 2,      
     "MAX_AUTO_COINS": 5,     
-    "AUTO_SCAN": True
+    "AUTO_SCAN": True,
+    "MIN_BNB_BUY": 0.3  # Bộ lọc Tay to mặc định 0.3 BNB
 }
 
 MANUAL_COINS = []
@@ -73,7 +74,7 @@ def format_bsc_security(ca):
     sec = check_bsc_security(ca)
     if not sec: return "🛡 <b>Bảo mật:</b> ⚠️ Không thể quét contract.\n"
     hp_str = "🔴 CÓ (Lừa đảo)" if sec['is_honeypot'] else "🟢 Không"
-    return f"🛡 <b>Bảo mật (BSC):</b>\n ├ Honeypot: {hp_str}\n └ Thuế: Mua {sec['buy_tax']:.1f}% | Bán {sec['sell_tax']:.1f}%\n"
+    return f"🛡 <b>Bảo mật:</b> Honeypot: {hp_str} | Thuế: Mua {sec['buy_tax']:.1f}% - Bán {sec['sell_tax']:.1f}%\n"
 
 # --- WEBHOOK NHẬN KÈO TỪ MORALIS STREAMS ---
 @app.route('/webhook', methods=['POST'])
@@ -85,7 +86,6 @@ def moralis_webhook():
         if data and data.get('confirmed'):
             logs = data.get('logs', [])
             for log in logs:
-                # Bắt sự kiện PairCreated trên PancakeSwap
                 if log.get('topic0') == '0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9':
                     token0 = "0x" + log.get('topic1', '')[-40:]
                     token1 = "0x" + log.get('topic2', '')[-40:]
@@ -97,7 +97,6 @@ def moralis_webhook():
                     if any(c['ca'].lower() == new_token.lower() for c in AUTO_COINS + MANUAL_COINS): continue
 
                     sec_info = check_bsc_security(new_token)
-                    # Chỉ lấy coin sạch (Không honeypot, thuế < 10%)
                     if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10:
                         if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']: AUTO_COINS.pop(0)
                         
@@ -106,7 +105,7 @@ def moralis_webhook():
                             "chain": "bsc", "ca": new_token, "lp": lp_address,
                             "last_alert_at": time.time(), "prompt_sent": False
                         })
-                        msg = f"🚨 <b>STREAMS PHÁT HIỆN GEM BSC MỚI!</b>\n📝 CA: <code>{new_token}</code>\n✅ Đã qua kiểm duyệt, đưa vào theo dõi Cá mập."
+                        msg = f"🚨 <b>STREAMS PHÁT HIỆN GEM BSC MỚI!</b>\n📝 CA: <code>{new_token}</code>\n✅ Đã đưa vào radar soi Cá mập."
                         send_telegram_alert(msg)
     except Exception as e: print(f"Webhook Error: {e}")
     return "OK", 200
@@ -116,26 +115,34 @@ def send_main_menu():
     keyboard = {"inline_keyboard": [
         [{"text": "📊 Xem Cấu Hình", "callback_data": "menu_status"}, {"text": "📋 List Đang Quét", "callback_data": "menu_list"}],
         [{"text": "➕ Thêm Coin BSC", "callback_data": "menu_add"}, {"text": "🗑 Xóa Coin", "callback_data": "menu_del"}],
-        [{"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
+        [{"text": "🐋 Cài Mức Tay To (BNB)", "callback_data": "menu_set_bnb"}, {"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
     send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER</b>", reply_markup=keyboard)
 
 def execute_command(cmd):
     global CONFIG, user_state
     if cmd == 'status':
-        send_telegram_alert(f"⚙️ <b>TRẠNG THÁI BSC:</b> Webhook {'🟢 BẬT' if CONFIG['AUTO_SCAN'] else '🔴 TẮT'}")
+        msg = (f"⚙️ <b>CẤU HÌNH BỘ LỌC (HỆ BSC)</b>\n"
+               f"🤖 Webhook Auto: {'🟢 BẬT' if CONFIG['AUTO_SCAN'] else '🔴 TẮT'}\n"
+               f"🐋 Mức Tay To: <b>>= {CONFIG['MIN_BNB_BUY']} BNB</b>\n"
+               f"⛓ Giới hạn truy vết: <b>Max F10</b>\n"
+               f"🧹 Chống rải rác: <b>Bật</b>")
+        send_telegram_alert(msg)
     elif cmd == 'list':
         msg = f"📋 <b>DANH SÁCH BSC:</b>\n🤖 Auto: {len(AUTO_COINS)}\n👤 Thủ công: {len(MANUAL_COINS)}"
         send_telegram_alert(msg)
     elif cmd == 'add':
         user_state = {'step': 'WAITING_CA', 'last_time': time.time()}
         send_telegram_alert("📝 Nhập CA BSC muốn theo dõi:")
+    elif cmd == 'set_bnb':
+        user_state = {'step': 'WAITING_BNB_VAL', 'last_time': time.time()}
+        send_telegram_alert(f"🐋 <b>BỘ LỌC TAY TO</b>\n\nMức hiện tại: <b>{CONFIG['MIN_BNB_BUY']} BNB</b>\n👉 Vui lòng nhập số BNB tối thiểu để tính là Cá mập (VD: 0.5, 1):")
     elif cmd == 'cancel':
         user_state.clear()
         send_telegram_alert("🚫 Đã hủy.")
 
 def process_update(item):
-    global AUTO_COINS, MANUAL_COINS, user_state
+    global AUTO_COINS, MANUAL_COINS, CONFIG, user_state
     if "callback_query" in item:
         data = item["callback_query"]["data"]
         if data.startswith("menu_"): execute_command(data.replace("menu_", ""))
@@ -151,6 +158,14 @@ def process_update(item):
             MANUAL_COINS.append({"name": f"Manual_{user_state['ca'][:4]}", "ca": user_state['ca'], "lp": text, "chain": "bsc"})
             send_telegram_alert("🎉 Đã thêm vào Radar Thủ Công BSC!")
             user_state.clear()
+        elif user_state and user_state.get('step') == 'WAITING_BNB_VAL':
+            try:
+                val = float(text)
+                CONFIG['MIN_BNB_BUY'] = val
+                send_telegram_alert(f"✅ Đã cập nhật Bộ lọc Tay To: Chỉ theo dõi ví mua <b>>= {val} BNB</b>.")
+                user_state.clear()
+            except ValueError:
+                send_telegram_alert("❌ Sai định dạng. Hãy nhập số (ví dụ: 0.5):")
 
 def listen_telegram_commands():
     last_update_id = 0
@@ -164,7 +179,7 @@ def listen_telegram_commands():
         except Exception: pass
         time.sleep(2)
 
-# --- LÕI ĐIỀU TRA CHUỖI CHÉO (ON-CHAIN FORENSICS) ---
+# --- LÕI ĐIỀU TRA CHUỖI CHÉO (TRIPLE FILTERS) ---
 def run_bot():
     alerted_coins = set()
     while True:
@@ -172,6 +187,7 @@ def run_bot():
         for list_type, coin_list in all_lists:
             time_frame = CONFIG[f"{list_type}_TIME_FRAME"]
             min_buys = CONFIG[f"{list_type}_MIN_BUYS"]
+            min_bnb = CONFIG['MIN_BNB_BUY']
             
             for coin in list(coin_list):
                 try:
@@ -179,11 +195,23 @@ def run_bot():
                     lp = coin["lp"].lower()
                     coin_name = coin["name"]
                     
-                    # Tránh báo liên tục cho 1 đồng
                     alert_key = f"{ca}_{time_frame}"
                     if alert_key in alerted_coins: continue
 
-                    # Gọi Moralis lấy lịch sử giao dịch Token
+                    # BƯỚC 1: LẤY GIÁ TOKEN QUY ĐỔI RA BNB
+                    token_price_bnb = 0
+                    token_decimals = 18
+                    try:
+                        price_url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/price?chain=bsc"
+                        price_res = requests.get(price_url, headers=get_current_headers(), timeout=10)
+                        if price_res.status_code == 200:
+                            p_data = price_res.json()
+                            token_decimals = int(p_data.get('tokenDecimals', 18))
+                            # Giá nativePrice là giá trị của 1 Token tính bằng wei của BNB
+                            token_price_bnb = float(p_data.get("nativePrice", {}).get("value", "0")) / (10**18)
+                    except Exception: pass
+
+                    # BƯỚC 2: QUÉT LỊCH SỬ GIAO DỊCH
                     url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/transfers?chain=bsc&limit=100"
                     response = requests.get(url, headers=get_current_headers(), timeout=10)
                     
@@ -191,56 +219,72 @@ def run_bot():
                         data = response.json()
                         transactions = data.get('result', [])
                         
-                        # Lọc giao dịch trong khung thời gian
                         time_ago = datetime.now(timezone.utc) - timedelta(hours=time_frame)
                         valid_txs = []
                         for tx in transactions:
                             tx_time = datetime.strptime(tx['block_timestamp'][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
                             if tx_time >= time_ago: valid_txs.append(tx)
 
-                        # THUẬT TOÁN VẾT DẦU LOANG
-                        # Sắp xếp từ cũ nhất đến mới nhất để lần theo dấu vết
                         valid_txs = sorted(valid_txs, key=lambda x: x.get('block_timestamp', ''))
                         
-                        suspect_wallets = set()
+                        # Dict lưu ví và Đời F (VD: {ví_A: 0, ví_B: 1})
+                        suspect_wallets = {} 
                         terminal_holders = set()
                         valid_buy_chains = 0
 
                         for tx in valid_txs:
                             sender = tx.get('from_address', '').lower()
                             receiver = tx.get('to_address', '').lower()
+                            value_raw = int(tx.get('value', '0'))
+
+                            # BỘ LỌC 1: CHỐNG RẢI RÁC (Bỏ qua giao dịch 0)
+                            if value_raw == 0: continue
+                            
+                            # Tính giá trị quy đổi BNB của lệnh này
+                            token_amount = value_raw / (10**token_decimals)
+                            tx_bnb_value = token_amount * token_price_bnb
 
                             # F0 Mua từ LP
                             if sender == lp:
-                                suspect_wallets.add(receiver)
-                                terminal_holders.add(receiver)
-                                valid_buy_chains += 1
+                                # BỘ LỌC 2: TAY TO (Chỉ tính nếu mua >= số BNB cấu hình)
+                                # (Nếu bot ko lấy đc giá, mặc định bỏ qua để chống nhiễu)
+                                if token_price_bnb > 0 and tx_bnb_value >= min_bnb:
+                                    suspect_wallets[receiver] = 0 # F0 = Đời 0
+                                    terminal_holders.add(receiver)
+                                    valid_buy_chains += 1
                             
-                            # Ví nghi ngờ thực hiện giao dịch
+                            # Các đời F truyền tay nhau hoặc Xả
                             elif sender in suspect_wallets:
+                                current_depth = suspect_wallets[sender]
+
                                 if receiver == lp:
-                                    # XẢ HÀNG: Cắt chuỗi
+                                    # XẢ HÀNG VÀO POOL: Đứt chuỗi
                                     if sender in terminal_holders:
                                         valid_buy_chains -= 1
                                         terminal_holders.remove(sender)
+                                    # Xóa khỏi danh sách lây nhiễm
+                                    del suspect_wallets[sender] 
                                 else:
-                                    # CHUYỂN TAY: Bôi đỏ ví mới
-                                    suspect_wallets.add(receiver)
-                                    terminal_holders.add(receiver)
-                                    if sender in terminal_holders:
-                                        terminal_holders.remove(sender)
+                                    # BỘ LỌC 3: GIỚI HẠN F10
+                                    if current_depth < 10:
+                                        suspect_wallets[receiver] = current_depth + 1
+                                        terminal_holders.add(receiver)
+                                        if sender in terminal_holders:
+                                            terminal_holders.remove(sender)
+                                    # Nếu > F10, không lây nhiễm tiếp cho receiver
                         
-                        # NẾU CÒN ĐỦ CHUỐI GOM VÀ KHÔNG BỊ XẢ
+                        # NẾU CÒN ĐỦ CHUỖI GOM VÀ KHÔNG BỊ XẢ
                         if valid_buy_chains >= min_buys:
                             sec_info = format_bsc_security(ca)
                             top_holders = list(terminal_holders)[:3]
-                            holders_str = "\n".join([f"💳 <code>{w}</code>" for w in top_holders])
+                            holders_str = "\n".join([f"💳 <code>{w}</code> (Đời F{suspect_wallets[w]})" for w in top_holders if w in suspect_wallets])
                             
-                            msg = (f"💎 <b>CÁ MẬP BSC GOM HÀNG CHUỖI CHÉO ({list_type})</b>\n\n"
-                                   f"🪙 <b>Coin:</b> {coin_name} | CA: <code>{ca}</code>\n"
-                                   f"🎯 <b>Phát hiện:</b> {valid_buy_chains} đường dây gom ngầm!\n"
-                                   f"🕵️‍♂️ <b>Ví cuối đang găm hàng:</b>\n{holders_str}\n\n"
-                                   f"✅ Bot đã bóc trần chiêu trò chuyển tay, tuyệt đối chưa xả ngược lại Pool!\n{sec_info}")
+                            msg = (f"💎 <b>CÁ MẬP BSC GOM HÀNG ({list_type})</b>\n\n"
+                                   f"🪙 <b>Coin:</b> {coin_name}\n"
+                                   f"📝 <b>CA:</b> <code>{ca}</code>\n"
+                                   f"🎯 <b>Phát hiện:</b> {valid_buy_chains} đường dây gom >= {min_bnb} BNB!\n"
+                                   f"🕵️‍♂️ <b>Ví cuối đang găm hàng (Max F10):</b>\n{holders_str}\n\n"
+                                   f"✅ Bot đã kiểm tra: Chưa có hiện tượng xả ngược về Pool.\n{sec_info}")
                             send_telegram_alert(msg)
                             alerted_coins.add(alert_key)
 
