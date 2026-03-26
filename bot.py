@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (Forensics V4 - Super Meme) đang hoạt động!"
+    return "BSC Sniper Bot (Forensics V5 - Check Wallets) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
@@ -85,7 +85,7 @@ def check_bsc_security(ca):
 def format_bsc_security(ca):
     sec = check_bsc_security(ca)
     if not sec: return "🛡 <b>Bảo mật:</b> ⚠️ Không thể quét contract.\n"
-    hp_str = "🔴 CÓ" if sec['is_honeypot'] else "🟢 Không"
+    hp_str = "🔴 CÓ (Nguy hiểm)" if sec['is_honeypot'] else "🟢 Không"
     return f"🛡 <b>Bảo mật:</b> Honeypot: {hp_str} | Thuế: Mua {sec['buy_tax']:.1f}% - Bán {sec['sell_tax']:.1f}%\n"
 
 # --- WEBHOOK MORALIS ---
@@ -125,7 +125,7 @@ def send_main_menu():
         [{"text": "🔑 Kho API Keys", "callback_data": "menu_keys"}, {"text": "➕ Nạp API Key", "callback_data": "menu_add_key"}],
         [{"text": "🌐 Đổi Ngôn Ngữ", "callback_data": "menu_language"}, {"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
-    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V4)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
+    send_telegram_alert("🎛 <b>BẢNG ĐIỀU KHIỂN BSC SNIPER (V5)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=keyboard)
 
 def execute_command(cmd):
     global CONFIG, user_state
@@ -284,7 +284,6 @@ def listen_telegram_commands():
 # --- LÕI ĐIỀU TRA ON-CHAIN ---
 def run_bot():
     print("🚀 LUỒNG QUÉT CÁ MẬP ĐÃ KHỞI ĐỘNG!", flush=True)
-    # THÔNG BÁO TỚI TELEGRAM KHI BOT CHẠY LÊN
     send_telegram_alert("🚀 <b>Bot Săn Meme siêu cấp đã sẵn sàng, bấm /menu để bắt đầu</b>")
     
     alerted_coins = set()
@@ -325,8 +324,6 @@ def run_bot():
                         token_decimals = int(p_data.get('tokenDecimals', 18))
                         token_price_bnb = float(p_data.get("nativePrice", {}).get("value", "0")) / (10**18)
                         print(f"   => Giá quy đổi: {token_price_bnb:.8f} BNB", flush=True)
-                    else:
-                        print(f"   ❌ LỖI LẤY GIÁ: HTTP {price_res.status_code}", flush=True)
 
                     url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/transfers?chain=bsc&limit=100"
                     response = requests.get(url, headers=get_current_headers(), timeout=10)
@@ -368,8 +365,35 @@ def run_bot():
 
                         if valid_buy_chains >= min_buys:
                             print(f"   🚨 BÁO ĐỘNG TỚI TELEGRAM!", flush=True)
+                            
+                            # --- NÂNG CẤP MỚI: CHECK LỊCH SỬ LỆNH & SỐ DƯ BNB ---
+                            holders_details = []
+                            for w in list(terminal_holders)[:3]:
+                                if w not in suspect_wallets: continue
+                                depth = suspect_wallets[w]
+                                
+                                # Đếm tổng số lệnh mua TRỰC TIẾP từ Pool trong toàn bộ lịch sử lấy được
+                                lifetime_buys = sum(1 for t in transactions if t.get('from_address', '').lower() == lp and t.get('to_address', '').lower() == w)
+                                
+                                # Query nhanh số dư BNB của ví này
+                                bnb_balance = 0
+                                try:
+                                    bal_url = f"https://deep-index.moralis.io/api/v2.2/{w}/balance?chain=bsc"
+                                    bal_res = requests.get(bal_url, headers=get_current_headers(), timeout=5)
+                                    if bal_res.status_code == 200:
+                                        bnb_balance = int(bal_res.json().get('balance', '0')) / (10**18)
+                                except: pass
+                                
+                                # Thêm thông tin vào tin nhắn
+                                holders_details.append(
+                                    f"💳 <code>{w}</code> (Đời F{depth})\n"
+                                    f"   ├ Số dư ví: <b>{bnb_balance:.4f} BNB</b>\n"
+                                    f"   └ Đã mua trực tiếp từ Pool: <b>{lifetime_buys} lệnh</b>"
+                                )
+                            
+                            holders_str = "\n".join(holders_details)
                             sec_info = format_bsc_security(ca)
-                            holders_str = "\n".join([f"💳 <code>{w}</code> (Đời F{suspect_wallets[w]})" for w in list(terminal_holders)[:3] if w in suspect_wallets])
+                            
                             msg = (f"💎 <b>CÁ MẬP BSC GOM HÀNG ({list_type})</b>\n\n"
                                    f"🪙 <b>Coin:</b> {coin['name']} | CA: <code>{ca}</code>\n"
                                    f"🎯 <b>Phát hiện:</b> {valid_buy_chains} đường dây gom >= {min_bnb} BNB!\n"
