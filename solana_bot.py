@@ -22,48 +22,61 @@ def moralis_webhook():
 
     try:
         data = request.json
-        if data and data.get('logs'):
-            # Logic Webhook cho Solana Streams (Cấu hình trên Moralis nhận Raydium LP)
-            for log in data['logs']:
-                # Tạm thời để cơ chế mở để bạn setup Streams cho Solana
-                # Token address thường nằm trong các tài khoản (accounts) của giao dịch tạo LP
-                new_token = "0x_thay_the_bang_logic_solana_khi_stream_chay" 
+        # Dữ liệu Streams của Solana trả về dưới dạng một danh sách (List) các giao dịch
+        if data and isinstance(data, list):
+            for tx in data:
+                mints = set()
                 
-                if any(c['ca'].lower() == new_token.lower() for c in AUTO_COINS + MANUAL_COINS): 
-                    continue
+                # Quét tìm các token xuất hiện trong giao dịch trả phí tạo Pool này
+                for transfer in tx.get('tokenTransfers', []):
+                    if transfer.get('mint'):
+                        mints.add(transfer['mint'])
+                        
+                # Bỏ qua đồng WSOL mặc định của hệ Solana
+                wsol = "So11111111111111111111111111111111111111112"
+                if wsol in mints:
+                    mints.remove(wsol)
                     
-                sec_info = check_solana_security(new_token)
-                
-                # CHỈ ĐƯA VÀO RADAR NẾU DEV ĐÃ TỪ BỎ QUYỀN MINT VÀ FREEZE (An toàn)
-                if sec_info and not sec_info['mintable'] and not sec_info['freezable']:
+                for new_token in mints:
+                    # Chống trùng lặp
+                    if any(c['ca'].lower() == new_token.lower() for c in AUTO_COINS + MANUAL_COINS): 
+                        continue
+                        
+                    # Đưa qua máy X-Quang Solana
+                    sec_info = check_solana_security(new_token)
                     
-                    if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']:
-                        dropped = AUTO_COINS.pop(0) 
-                        send_telegram_alert(f"🗑 Đã xóa <b>{dropped['name']}</b> để nhường chỗ cho Gem mới (Đầy {CONFIG['MAX_AUTO_COINS']} coin).")
-                    
-                    new_coin_obj = {
-                        "name": f"SolAuto_{new_token[:4]}", 
-                        "chain": "solana", 
-                        "ca": new_token, 
-                        "lp": "raydium_pool", # LP của Solana thường là Raydium
-                        "last_alert_at": time.time(), 
-                        "prompt_sent": False,
-                        "prompt_time": 0
-                    }
-                    AUTO_COINS.append(new_coin_obj)
-                    
-                    alert_msg = (
-                        f"🚨 <b>STREAMS BẮT ĐƯỢC GEM SOLANA MỚI!</b> 🚨\n\n"
-                        f"🌐 <b>Mạng:</b> SOLANA\n"
-                        f"📝 <b>CA:</b> <code>{new_token}</code>\n"
-                        f"✅ <b>An toàn tuyệt đối:</b>\n"
-                        f" ├ Quyền in coin (Mint): Đã khóa 🟢\n"
-                        f" └ Quyền đóng băng (Freeze): Đã khóa 🟢\n\n"
-                        f"<i>👉 Đã tự động đưa vào Radar săn Cá mập.</i>"
-                    )
-                    send_telegram_alert(alert_msg)
+                    # CỰC KỲ QUAN TRỌNG: Chỉ lấy coin ĐÃ KHÓA Mint và Freeze
+                    if sec_info and not sec_info['mintable'] and not sec_info['freezable']:
+                        
+                        # Băng chuyền Auto
+                        if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']:
+                            dropped = AUTO_COINS.pop(0) 
+                            send_telegram_alert(f"🗑 Đã xóa <b>{dropped['name']}</b> để nhường chỗ cho Gem Solana mới.")
+                        
+                        new_coin_obj = {
+                            "name": f"SolAuto_{new_token[:4]}", 
+                            "chain": "solana", 
+                            "ca": new_token, 
+                            "lp": "raydium_pool",
+                            "last_alert_at": time.time(), 
+                            "prompt_sent": False,
+                            "prompt_time": 0
+                        }
+                        AUTO_COINS.append(new_coin_obj)
+                        
+                        alert_msg = (
+                            f"🚨 <b>STREAMS BẮT ĐƯỢC GEM SOLANA MỚI!</b> 🚨\n\n"
+                            f"🌐 <b>Mạng:</b> SOLANA\n"
+                            f"📝 <b>CA:</b> <code>{new_token}</code>\n"
+                            f"✅ <b>Bảo mật (Tuyệt đối an toàn):</b>\n"
+                            f" ├ Quyền in coin (Mint): Đã khóa 🟢\n"
+                            f" └ Quyền đóng băng (Freeze): Đã khóa 🟢\n\n"
+                            f"<i>👉 Đã tự động đưa vào Radar quét cá mập.</i>\n"
+                            f"🔍 <a href='https://solscan.io/token/{new_token}'>Soi trên Solscan</a>"
+                        )
+                        send_telegram_alert(alert_msg)
     except Exception as e:
-        print(f"Lỗi Webhook: {e}", flush=True)
+        print(f"Lỗi Webhook Solana: {e}", flush=True)
     return "OK", 200
 
 def run_server():
