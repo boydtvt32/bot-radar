@@ -1,7 +1,7 @@
 import requests
 import time
 import os
-import json 
+import json
 from datetime import datetime, timedelta, timezone 
 from collections import defaultdict
 from flask import Flask
