@@ -13,11 +13,11 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Siêu Bot Săn Gem Toàn Diện đang hoạt động!"
+    return "Siêu Bot (Bộ Não Kép & Dọn Rác) đang hoạt động!"
 
 @app.route('/webhook', methods=['POST'])
 def moralis_webhook():
-    global COINS_TO_TRACK, CONFIG
+    global AUTO_COINS, MANUAL_COINS, CONFIG
     if not CONFIG.get('AUTO_SCAN', True):
         return "Auto scan is disabled", 200
 
@@ -36,24 +36,38 @@ def moralis_webhook():
                     wbnb_weth = ["0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"]
                     new_token = token0 if token1.lower() in wbnb_weth else token1
                     if new_token.lower() in wbnb_weth: continue 
-                    if any(c['ca'].lower() == new_token.lower() for c in COINS_TO_TRACK): continue
+                    
+                    # Tránh thêm trùng lặp ở cả 2 danh sách
+                    if any(c['ca'].lower() == new_token.lower() for c in AUTO_COINS + MANUAL_COINS): 
+                        continue
                         
                     sec_info = check_token_security(new_token, chain)
                     if sec_info and not sec_info['honeypot'] and sec_info['buy_tax'] <= 10 and sec_info['sell_tax'] <= 10:
-                        if len(COINS_TO_TRACK) >= CONFIG['MAX_AUTO_COINS']:
-                            dropped = COINS_TO_TRACK.pop(0) 
-                            send_telegram_alert(f"🗑 Hệ thống tự động xóa <b>{dropped['name']}</b> để nhường chỗ cho Gem mới.")
                         
-                        new_coin_obj = {"name": f"AutoGem_{new_token[:4]}", "chain": chain, "ca": new_token, "lp": pair}
-                        COINS_TO_TRACK.append(new_coin_obj)
+                        # Cơ chế Băng chuyền cho AUTO
+                        if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']:
+                            dropped = AUTO_COINS.pop(0) 
+                            send_telegram_alert(f"🗑 Đã xóa <b>{dropped['name']}</b> để nhường chỗ cho Gem mới (Đầy {CONFIG['MAX_AUTO_COINS']} coin).")
+                        
+                        # Cấu trúc của 1 coin Auto có thêm biến đếm thời gian
+                        new_coin_obj = {
+                            "name": f"Auto_{new_token[:4]}", 
+                            "chain": chain, 
+                            "ca": new_token, 
+                            "lp": pair,
+                            "last_alert_at": time.time(), # Thời điểm nạp (hoặc lần cuối báo cá mập)
+                            "prompt_sent": False,
+                            "prompt_time": 0
+                        }
+                        AUTO_COINS.append(new_coin_obj)
                         
                         alert_msg = (
-                            f"🚨 <b>HỆ THỐNG STREAMS VỪA TÓM ĐƯỢC GEM MỚI!</b> 🚨\n\n"
+                            f"🚨 <b>STREAMS BẮT ĐƯỢC GEM MỚI!</b> 🚨\n\n"
                             f"🌐 <b>Mạng:</b> {chain.upper()}\n"
                             f"📝 <b>CA:</b> <code>{new_token}</code>\n"
-                            f"✅ <b>Kiểm định an toàn:</b> Thuế Mua {sec_info['buy_tax']}% | Bán {sec_info['sell_tax']}%\n"
-                            f"🛡 Không cài mã độc Honeypot.\n\n"
-                            f"<i>👉 Đã tự động đưa vào Radar theo dõi.</i>"
+                            f"✅ Thuế Mua {sec_info['buy_tax']}% | Bán {sec_info['sell_tax']}%\n"
+                            f"🛡 Không Honeypot.\n"
+                            f"<i>👉 Tự động nạp vào Radar (Sẽ tự xóa nếu 24h ko ai gom).</i>"
                         )
                         send_telegram_alert(alert_msg)
     except Exception as e:
@@ -80,122 +94,28 @@ EXPLORERS = {
     "eth": "etherscan.io"
 }
 
+# CẤU HÌNH CHIA ĐÔI THẾ GIỚI
 CONFIG = {
-    "TIME_FRAME": 6,  
-    "MIN_BUYS": 2,
-    "LANGUAGE": "vi",
-    "MAX_AUTO_COINS": 5,
+    "MANUAL_TIME_FRAME": 6,  
+    "MANUAL_MIN_BUYS": 2,    
+    "AUTO_TIME_FRAME": 2,    
+    "AUTO_MIN_BUYS": 2,      
+    "MAX_AUTO_COINS": 5,     
     "AUTO_SCAN": True 
 }
 
-COINS_TO_TRACK = [] 
+MANUAL_COINS = [
+    {
+        "name": "Token 4 (Thủ công)", 
+        "chain": "base",   
+        "ca": "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07", 
+        "lp": "0xCD55381a53da35Ab1D7Bc5e3fE5F76cac976FAc3"
+    }
+]
+AUTO_COINS = [] 
 SMART_WALLETS = [] 
 user_state = {} 
 current_api_index = 0 
-
-# --- TỪ ĐIỂN ĐA NGÔN NGỮ ĐẦY ĐỦ ---
-TEXTS = {
-    "vi": {
-        "start": "🚀 <b>Siêu Bot Auto Sniper Đã Kích Hoạt (Bản Đầy Đủ)!</b>\nGõ /help để xem lệnh.",
-        "timeout": "⏳ <b>Quá 5 phút không phản hồi!</b> Hủy tác vụ.",
-        "choose_chain": "👇 Chọn Mạng lưới (Chain):",
-        "chain_selected": "✅ Đã chọn mạng: <b>{}</b>\n📝 Nhập <b>CA</b> của coin:",
-        "invalid_ca": "❌ <b>CA không hợp lệ!</b> Mời nhập lại:",
-        "valid_ca": "✅ CA hợp lệ!\n📝 Nhập <b>địa chỉ Pool (LP)</b>:",
-        "invalid_lp": "❌ <b>LP không hợp lệ!</b> Mời nhập lại:",
-        "valid_lp": "✅ LP hợp lệ!\n📝 Nhập <b>Tên của đồng coin</b>:",
-        "coin_added": "🎉 <b>ĐÃ THÊM COIN MỚI!</b>",
-        "cancel": "🚫 Đã hủy tác vụ.",
-        "del_prompt": "🗑 Nhập <b>CA</b> hoặc <b>Tên</b> coin muốn xóa:",
-        "del_success": "🗑 <b>Đã xóa coin khỏi radar!</b>",
-        "del_fail": "❌ <b>Không tìm thấy coin!</b>",
-        "set_buy_prompt": "🛒 <b>CÀI ĐẶT ĐIỀU KIỆN MUA</b>\n👉 Nhập số lệnh mua tối thiểu (VD: 2, 5):",
-        "set_buy_success": "✅ Đã đổi điều kiện mua thành: <b>{} lệnh</b>",
-        "set_time_prompt": "⏱ <b>CÀI ĐẶT KHUNG GIỜ QUÉT</b>\n👉 Nhập số giờ muốn quét (VD: 6, 12):",
-        "set_time_success": "✅ Đã đổi khung giờ quét thành: <b>{} giờ</b>",
-        "invalid_num": "❌ Vui lòng nhập số lớn hơn 0. Mời nhập lại:",
-        "invalid_format": "❌ Vui lòng chỉ nhập số. Mời nhập lại:",
-        "status_header": "⚙️ <b>CẤU HÌNH HIỆN TẠI</b>\n⏱ Quét: <b>{}h</b> | Gom: >= <b>{}</b>\n🔑 API: <b>{}/{}</b> | Giới hạn Auto: <b>{} Coin</b>\n🤖 Auto Scan Streams: <b>{}</b>\n🌐 Ngôn ngữ: <b>Tiếng Việt</b>\n\n📋 <b>Coin theo dõi ({}):</b>\n",
-        "status_item": "🔹 {} ({})\n",
-        "status_smart": "\n🐋 <b>Ví Smart Money ({}):</b>\n",
-        "help": "🤖 <b>LỆNH ĐIỀU KHIỂN</b>\n🔹 /status - Xem cấu hình\n🔹 /set_time - Cài khung giờ quét\n🔹 /set_buy - Cài số lệnh gom tối thiểu\n🔹 /auto_scan - Bật/Tắt quét coin tự động\n🔹 /add - Thêm coin thủ công\n🔹 /del - Xóa coin\n🔹 /add_wallet - Theo dõi Cá mập\n🔹 /add_key - Nạp API Key\n🔹 /keys - Xem kho API Key\n🔹 /language - Chuyển đổi ngôn ngữ\n🔹 /cancel - Hủy",
-        "invalid_cmd": "⚠️ Lệnh không hợp lệ!",
-        "lang_prompt": "🌐 <b>Chọn ngôn ngữ / Select Language:</b>",
-        "lang_changed": "✅ Đã chuyển ngôn ngữ sang Tiếng Việt!",
-        "api_switch": "🔄 <b>ĐỔI API KEY TỰ ĐỘNG</b>: Chuyển sang <b>Key số {}</b>!",
-        "api_dead": "💀 <b>BÁO ĐỘNG ĐỎ</b>: Hết Key! Nghỉ 30 phút.",
-        "diamond": "💎 <b>CÁ MẬP GOM KÍN ({}H)</b>\n\n🪙 <b>Coin:</b> {}\n💳 <code>{}</code>\n🟢 Đã mua {} lệnh.\n{}\n{}\n🔍 <a href='https://{}/address/{}'>Xem ví gom hàng</a>",
-        "sec_title": "🛡 <b>Bảo mật:</b>\n",
-        "sec_hp": " ├ Honeypot: {}\n",
-        "sec_tax": " └ Thuế: Mua {}% | Bán {}%\n",
-        "defi_info": "📊 <b>Thị trường:</b>\n └ Giá token: {}\n",
-        "hp_yes": "🔴 CÓ (SCAM)",
-        "hp_no": "🟢 KHÔNG (An toàn)",
-        "sec_error": "🛡 <b>Bảo mật:</b> ⚠️ Lỗi quét contract.\n",
-        "smart_wallet_prompt": "🐋 <b>THEO DÕI VÍ SMART MONEY</b>\n👇 Chọn Mạng lưới:",
-        "smart_address_prompt": "✅ Mạng: <b>{}</b>\n📝 Dán địa chỉ Ví Cá Mập:",
-        "smart_name_prompt": "✅ Ví hợp lệ!\n📝 Đặt tên cho ví này:",
-        "smart_added": "🎉 <b>ĐÃ THEO DÕI VÍ SMART MONEY!</b>",
-        "smart_alert": "🚨 <b>SMART MONEY MUA HÀNG!</b>\n\n👤 <b>{}</b>\n💰 Nhận: {:,.2f} <b>{}</b>\n📝 CA: <code>{}</code>\n🔗 <a href='https://{}/tx/{}'>Xem TX</a>",
-        "auto_on": "🟢 <b>Quét Coin Tự Động: BẬT</b>",
-        "auto_off": "🔴 <b>Quét Coin Tự Động: TẮT</b>",
-        "on_text": "🟢 BẬT",
-        "off_text": "🔴 TẮT"
-    },
-    "en": {
-        "start": "🚀 <b>Super Bot Auto Sniper Activated (Full)!</b>\nType /help for commands.",
-        "timeout": "⏳ <b>Timeout!</b> Operation canceled.",
-        "choose_chain": "👇 Select Chain:",
-        "chain_selected": "✅ Chain: <b>{}</b>\n📝 Enter <b>CA</b>:",
-        "invalid_ca": "❌ <b>Invalid CA!</b> Try again:",
-        "valid_ca": "✅ Valid CA!\n📝 Enter <b>LP Address</b>:",
-        "invalid_lp": "❌ <b>Invalid LP!</b> Try again:",
-        "valid_lp": "✅ Valid LP!\n📝 Enter <b>Token Name</b>:",
-        "coin_added": "🎉 <b>NEW COIN ADDED!</b>",
-        "cancel": "🚫 Operation canceled.",
-        "del_prompt": "🗑 Enter <b>CA</b> or <b>Name</b> to delete:",
-        "del_success": "🗑 <b>Coin removed!</b>",
-        "del_fail": "❌ <b>Coin not found!</b>",
-        "set_buy_prompt": "🛒 <b>SET MINIMUM BUYS</b>\n👉 Enter minimum buys (e.g., 2, 5):",
-        "set_buy_success": "✅ Min buys set to: <b>{}</b>",
-        "set_time_prompt": "⏱ <b>SET TIME FRAME</b>\n👉 Enter scanning hours (e.g., 6, 12):",
-        "set_time_success": "✅ Time frame set to: <b>{} hours</b>",
-        "invalid_num": "❌ Number must be > 0. Try again:",
-        "invalid_format": "❌ Please enter numbers only. Try again:",
-        "status_header": "⚙️ <b>CURRENT CONFIG</b>\n⏱ Time: <b>{}h</b> | Min Buys: >= <b>{}</b>\n🔑 API: <b>{}/{}</b> | Auto Limit: <b>{} Coins</b>\n🤖 Auto Scan Streams: <b>{}</b>\n🌐 Language: <b>English</b>\n\n📋 <b>Tracked Coins ({}):</b>\n",
-        "status_item": "🔹 {} ({})\n",
-        "status_smart": "\n🐋 <b>Smart Wallets ({}):</b>\n",
-        "help": "🤖 <b>COMMANDS</b>\n🔹 /status - View config\n🔹 /set_time - Set time frame\n🔹 /set_buy - Set min buys\n🔹 /auto_scan - Toggle Auto Scan\n🔹 /add - Add new coin\n🔹 /del - Delete coin\n🔹 /add_wallet - Track Whale\n🔹 /add_key - Add API Key\n🔹 /keys - View API Keys\n🔹 /language - Select Language\n🔹 /cancel - Cancel",
-        "invalid_cmd": "⚠️ Invalid command!",
-        "lang_prompt": "🌐 <b>Select Language / Chọn ngôn ngữ:</b>",
-        "lang_changed": "✅ Language successfully changed to English!",
-        "api_switch": "🔄 <b>SWITCH API KEY</b>: Switched to <b>Key #{}</b>!",
-        "api_dead": "💀 <b>RED ALERT</b>: All Keys exhausted! Pausing 30 mins.",
-        "diamond": "💎 <b>DIAMOND HANDS ({}H)</b>\n\n🪙 <b>Coin:</b> {}\n💳 <code>{}</code>\n🟢 Bought {} times.\n{}\n{}\n🔍 <a href='https://{}/address/{}'>View Wallet</a>",
-        "sec_title": "🛡 <b>Security:</b>\n",
-        "sec_hp": " ├ Honeypot: {}\n",
-        "sec_tax": " └ Tax: Buy {}% | Sell {}%\n",
-        "defi_info": "📊 <b>Market:</b>\n └ Token Price: {}\n",
-        "hp_yes": "🔴 YES (SCAM)",
-        "hp_no": "🟢 NO (Safe)",
-        "sec_error": "🛡 <b>Security:</b> ⚠️ Error scanning contract.\n",
-        "smart_wallet_prompt": "🐋 <b>TRACK SMART MONEY</b>\n👇 Select Chain:",
-        "smart_address_prompt": "✅ Chain: <b>{}</b>\n📝 Paste Wallet Address:",
-        "smart_name_prompt": "✅ Valid Wallet!\n📝 Enter a Name:",
-        "smart_added": "🎉 <b>SMART WALLET ADDED!</b>",
-        "smart_alert": "🚨 <b>SMART MONEY BOUGHT!</b>\n\n👤 <b>{}</b>\n💰 Received: {:,.2f} <b>{}</b>\n📝 CA: <code>{}</code>\n🔗 <a href='https://{}/tx/{}'>View TX</a>",
-        "auto_on": "🟢 <b>Auto Scan Streams: ON</b>",
-        "auto_off": "🔴 <b>Auto Scan Streams: OFF</b>",
-        "on_text": "🟢 ON",
-        "off_text": "🔴 OFF"
-    }
-}
-
-def t(key, *args):
-    lang = CONFIG["LANGUAGE"]
-    text = TEXTS[lang].get(key, key)
-    if args: return text.format(*args)
-    return text
 
 def get_current_headers():
     global current_api_index
@@ -248,7 +168,7 @@ def listen_telegram_commands():
     while True:
         try:
             if user_state and (time.time() - user_state.get('last_time', 0) > 300):
-                send_telegram_alert(t("timeout"))
+                send_telegram_alert("⏳ <b>Quá 5 phút không phản hồi!</b> Hủy tác vụ.")
                 user_state.clear()
 
             res = requests.get(url, params={"offset": last_update_id + 1, "timeout": 10}, timeout=15).json()
@@ -259,31 +179,61 @@ def listen_telegram_commands():
         time.sleep(2)
 
 def process_update(item):
-    global COINS_TO_TRACK, CONFIG, user_state, API_KEYS, SMART_WALLETS
+    global AUTO_COINS, MANUAL_COINS, CONFIG, user_state, API_KEYS, SMART_WALLETS
     try:
+        # XỬ LÝ NÚT BẤM (CALLBACK QUERY)
         if "callback_query" in item:
             callback = item["callback_query"]
             chat_id = str(callback["message"]["chat"]["id"])
             data = callback["data"]
             if chat_id != TELEGRAM_CHAT_ID: return
 
-            if data in ["lang_vi", "lang_en"]:
-                CONFIG["LANGUAGE"] = data.split("_")[1]
-                send_telegram_alert(t("lang_changed"))
+            # Xử lý nút dọn rác (Dead Coin Timeout)
+            if data.startswith("dead_yes_"):
+                ca_to_del = data.split("_")[2]
+                AUTO_COINS = [c for c in AUTO_COINS if c['ca'].lower() != ca_to_del.lower()]
+                send_telegram_alert(f"✅ Đã dọn dẹp và xóa coin <code>{ca_to_del[:6]}...</code> khỏi hệ thống Auto.")
+                return
+                
+            if data.startswith("dead_no_"):
+                ca_to_keep = data.split("_")[2]
+                for c in AUTO_COINS:
+                    if c['ca'].lower() == ca_to_keep.lower():
+                        c['last_alert_at'] = time.time()
+                        c['prompt_sent'] = False
+                        send_telegram_alert(f"✅ Đã gia hạn theo dõi <b>{c['name']}</b> thêm 24h nữa.")
+                        break
                 return
 
+            # Xử lý chọn Danh sách để Setup
+            if data in ["set_time_auto", "set_time_manual"]:
+                list_type = "AUTO_SCAN" if data == "set_time_auto" else "THỦ CÔNG"
+                user_state['step'] = 'WAITING_TIME_VAL_' + data.split('_')[2].upper() # AUTO / MANUAL
+                user_state['last_time'] = time.time()
+                send_telegram_alert(f"👉 Bạn đang cấu hình Khung giờ cho <b>{list_type}</b>\nNhập số giờ muốn quét (VD: 2, 6):")
+                return
+
+            if data in ["set_buy_auto", "set_buy_manual"]:
+                list_type = "AUTO_SCAN" if data == "set_buy_auto" else "THỦ CÔNG"
+                user_state['step'] = 'WAITING_BUY_VAL_' + data.split('_')[2].upper()
+                user_state['last_time'] = time.time()
+                send_telegram_alert(f"👉 Bạn đang cấu hình Số lệnh mua cho <b>{list_type}</b>\nNhập số lệnh tối thiểu (VD: 2, 5):")
+                return
+
+            # Xử lý chọn Chain
             if data.startswith("chain_") and user_state:
                 selected_chain = data.split("_")[1]
                 if user_state.get('step') == 'WAITING_CHAIN':
                     user_state['chain'] = selected_chain
                     user_state['step'] = 'WAITING_CA'
-                    send_telegram_alert(t("chain_selected", selected_chain.upper()))
+                    send_telegram_alert(f"✅ Chọn mạng: {selected_chain.upper()}\n📝 Nhập CA của coin:")
                 elif user_state.get('step') == 'WAITING_SMART_CHAIN':
                     user_state['chain'] = selected_chain
                     user_state['step'] = 'WAITING_SMART_ADDRESS'
-                    send_telegram_alert(t("smart_address_prompt", selected_chain.upper()))
+                    send_telegram_alert(f"✅ Chọn mạng: {selected_chain.upper()}\n📝 Dán địa chỉ Ví Cá Mập:")
             return
 
+        # XỬ LÝ VĂN BẢN (MESSAGES)
         if "message" in item:
             chat_id = str(item["message"]["chat"]["id"])
             text = item["message"].get("text", "").strip()
@@ -291,7 +241,7 @@ def process_update(item):
 
             if user_state:
                 if text == '/cancel':
-                    send_telegram_alert(t("cancel"))
+                    send_telegram_alert("🚫 Đã hủy tác vụ.")
                     user_state.clear()
                     return
                 user_state['last_time'] = time.time()
@@ -299,26 +249,63 @@ def process_update(item):
                 if user_state['step'] == 'WAITING_CA':
                     user_state['ca'] = text
                     user_state['step'] = 'WAITING_LP'
-                    send_telegram_alert(t("valid_ca"))
+                    send_telegram_alert("✅ Hợp lệ. Nhập LP Address:")
                     return
                 elif user_state['step'] == 'WAITING_LP':
                     user_state['lp'] = text
                     user_state['step'] = 'WAITING_NAME'
-                    send_telegram_alert(t("valid_lp"))
+                    send_telegram_alert("✅ Hợp lệ. Đặt tên cho coin này:")
                     return
                 elif user_state['step'] == 'WAITING_NAME':
-                    COINS_TO_TRACK.append({"name": text, "chain": user_state['chain'], "ca": user_state['ca'], "lp": user_state['lp']})
-                    send_telegram_alert(t("coin_added"))
+                    # Coin add tay luôn vào danh sách MANUAL
+                    MANUAL_COINS.append({"name": text, "chain": user_state['chain'], "ca": user_state['ca'], "lp": user_state['lp']})
+                    send_telegram_alert("🎉 <b>ĐÃ THÊM VÀO DANH SÁCH THỦ CÔNG!</b>")
                     user_state.clear()
                     return
                 elif user_state['step'] == 'WAITING_DEL_COIN':
                     target = text.lower()
-                    original_len = len(COINS_TO_TRACK)
-                    COINS_TO_TRACK = [c for c in COINS_TO_TRACK if c['ca'].lower() != target and c['name'].lower() != target]
-                    if len(COINS_TO_TRACK) < original_len: send_telegram_alert(t("del_success"))
-                    else: send_telegram_alert(t("del_fail"))
-                    user_state.clear()
+                    m_len = len(MANUAL_COINS)
+                    a_len = len(AUTO_COINS)
+                    
+                    # Quét cả 2 danh sách để xóa
+                    MANUAL_COINS[:] = [c for c in MANUAL_COINS if c['ca'].lower() != target and c['name'].lower() != target]
+                    AUTO_COINS[:] = [c for c in AUTO_COINS if c['ca'].lower() != target and c['name'].lower() != target]
+                    
+                    if len(MANUAL_COINS) < m_len or len(AUTO_COINS) < a_len:
+                        send_telegram_alert("🗑 <b>Đã xóa coin khỏi radar!</b>")
+                    else: send_telegram_alert("❌ Không tìm thấy coin. Mời nhập lại (/cancel để hủy):")
                     return
+                    
+                # XỬ LÝ LƯU CẤU HÌNH CHIA ĐÔI
+                elif user_state['step'].startswith('WAITING_TIME_VAL_'):
+                    try:
+                        val = int(text)
+                        target_list = user_state['step'].split('_')[3] # Lấy ra chữ AUTO hoặc MANUAL
+                        CONFIG[f'{target_list}_TIME_FRAME'] = val
+                        send_telegram_alert(f"✅ Đã đổi thời gian cho {target_list} thành {val} giờ.")
+                        user_state.clear()
+                    except ValueError: send_telegram_alert("❌ Vui lòng nhập số:")
+                    return
+                    
+                elif user_state['step'].startswith('WAITING_BUY_VAL_'):
+                    try:
+                        val = int(text)
+                        target_list = user_state['step'].split('_')[3]
+                        CONFIG[f'{target_list}_MIN_BUYS'] = val
+                        send_telegram_alert(f"✅ Đã đổi số lệnh mua cho {target_list} thành {val} lệnh.")
+                        user_state.clear()
+                    except ValueError: send_telegram_alert("❌ Vui lòng nhập số:")
+                    return
+                    
+                elif user_state['step'] == 'WAITING_MAX_AUTO':
+                    try:
+                        val = int(text)
+                        CONFIG['MAX_AUTO_COINS'] = val
+                        send_telegram_alert(f"✅ Giới hạn rổ Auto Scan đã đổi thành: <b>{val} Coin</b>.")
+                        user_state.clear()
+                    except ValueError: send_telegram_alert("❌ Vui lòng nhập số:")
+                    return
+
                 elif user_state['step'] == 'WAITING_ADD_KEY':
                     if text not in API_KEYS: API_KEYS.append(text)
                     send_telegram_alert(f"✅ Đã thêm Key. Tổng băng đạn: {len(API_KEYS)}")
@@ -327,77 +314,108 @@ def process_update(item):
                 elif user_state['step'] == 'WAITING_SMART_ADDRESS':
                     user_state['address'] = text
                     user_state['step'] = 'WAITING_SMART_NAME'
-                    send_telegram_alert(t("smart_name_prompt"))
+                    send_telegram_alert("✅ Hợp lệ. Đặt tên cho Ví Cá Mập:")
                     return
                 elif user_state['step'] == 'WAITING_SMART_NAME':
                     SMART_WALLETS.append({"name": text, "chain": user_state['chain'], "address": user_state['address']})
-                    send_telegram_alert(t("smart_added"))
+                    send_telegram_alert("🎉 <b>ĐÃ ĐƯA VÍ SMART MONEY VÀO TẦM NGẮM!</b>")
                     user_state.clear()
                     return
-                elif user_state['step'] == 'WAITING_SET_BUY':
-                    try:
-                        val = int(text)
-                        if val <= 0: return send_telegram_alert(t("invalid_num"))
-                        CONFIG['MIN_BUYS'] = val
-                        send_telegram_alert(t("set_buy_success", val))
-                        user_state.clear()
-                    except ValueError: send_telegram_alert(t("invalid_format"))
-                    return
-                elif user_state['step'] == 'WAITING_SET_TIME':
-                    try:
-                        val = int(text)
-                        if val <= 0: return send_telegram_alert(t("invalid_num"))
-                        CONFIG['TIME_FRAME'] = val
-                        send_telegram_alert(t("set_time_success", val))
-                        user_state.clear()
-                    except ValueError: send_telegram_alert(t("invalid_format"))
-                    return
 
+            # CÁC LỆNH KÍCH HOẠT
             if text == '/status':
-                total_keys = len(API_KEYS)
-                auto_state = t("on_text") if CONFIG['AUTO_SCAN'] else t("off_text")
-                msg = t("status_header", CONFIG['TIME_FRAME'], CONFIG['MIN_BUYS'], current_api_index + 1 if total_keys > 0 else 0, total_keys, CONFIG['MAX_AUTO_COINS'], auto_state, len(COINS_TO_TRACK))
-                for c in COINS_TO_TRACK: msg += t("status_item", c['name'], c['chain'].upper())
-                if SMART_WALLETS:
-                    msg += t("status_smart", len(SMART_WALLETS))
-                    for w in SMART_WALLETS: msg += t("status_item", w['name'], w['chain'].upper())
+                auto_state = "🟢 BẬT" if CONFIG['AUTO_SCAN'] else "🔴 TẮT"
+                msg = (
+                    f"⚙️ <b>CẤU HÌNH HIỆN TẠI</b>\n"
+                    f"🤖 AUTO: Quét <b>{CONFIG['AUTO_TIME_FRAME']}h</b> | Gom >= <b>{CONFIG['AUTO_MIN_BUYS']}</b>\n"
+                    f"👤 THỦ CÔNG: Quét <b>{CONFIG['MANUAL_TIME_FRAME']}h</b> | Gom >= <b>{CONFIG['MANUAL_MIN_BUYS']}</b>\n"
+                    f"🔑 API: <b>{current_api_index + 1}/{len(API_KEYS)}</b>\n"
+                    f"🔄 Auto Scan Streams: <b>{auto_state}</b>\n\n"
+                    f"👉 Gõ /list để xem danh sách chi tiết các coin đang theo dõi."
+                )
                 send_telegram_alert(msg)
+                
+            elif text == '/list':
+                msg = f"📋 <b>DANH SÁCH COIN ĐANG THEO DÕI</b>\n\n"
+                
+                msg += f"🤖 <b>TỰ ĐỘNG (AUTO) - {len(AUTO_COINS)}/{CONFIG['MAX_AUTO_COINS']}</b>\n"
+                if not AUTO_COINS: msg += " └ (Trống)\n"
+                for c in AUTO_COINS: 
+                    msg += f" ├ {c['name']} - <code>{c['ca'][:4]}..{c['ca'][-4:]}</code>\n"
+                
+                msg += f"\n👤 <b>THỦ CÔNG (MANUAL) - {len(MANUAL_COINS)}</b>\n"
+                if not MANUAL_COINS: msg += " └ (Trống)\n"
+                for c in MANUAL_COINS: 
+                    msg += f" ├ {c['name']} - <code>{c['ca'][:4]}..{c['ca'][-4:]}</code>\n"
+                    
+                if SMART_WALLETS:
+                    msg += f"\n🐋 <b>VÍ SMART MONEY - {len(SMART_WALLETS)}</b>\n"
+                    for w in SMART_WALLETS: msg += f" ├ {w['name']} - <code>{w['address'][:4]}..{w['address'][-4:]}</code>\n"
+                    
+                send_telegram_alert(msg)
+                
             elif text == '/auto_scan':
                 CONFIG['AUTO_SCAN'] = not CONFIG.get('AUTO_SCAN', True)
-                if CONFIG['AUTO_SCAN']: send_telegram_alert(t("auto_on"))
-                else: send_telegram_alert(t("auto_off"))
+                if CONFIG['AUTO_SCAN']: send_telegram_alert("🟢 <b>Quét Tự Động: BẬT</b>")
+                else: send_telegram_alert("🔴 <b>Quét Tự Động: TẮT</b>")
+                
+            elif text == '/set_time':
+                keyboard = {"inline_keyboard": [[{"text": "🤖 Auto Scan", "callback_data": "set_time_auto"}, {"text": "👤 Thủ Công", "callback_data": "set_time_manual"}]]}
+                send_telegram_alert("🕒 Bạn muốn cài thời gian cho rổ nào?", reply_markup=keyboard)
+                
+            elif text == '/set_buy':
+                keyboard = {"inline_keyboard": [[{"text": "🤖 Auto Scan", "callback_data": "set_buy_auto"}, {"text": "👤 Thủ Công", "callback_data": "set_buy_manual"}]]}
+                send_telegram_alert("🛒 Bạn muốn cài số lệnh mua cho rổ nào?", reply_markup=keyboard)
+                
+            elif text == '/set_max_auto':
+                user_state = {'step': 'WAITING_MAX_AUTO', 'last_time': time.time()}
+                send_telegram_alert("🤖 Bạn muốn rổ Auto Scan chứa được TỐI ĐA bao nhiêu coin? (Mặc định: 5)")
+                
             elif text == '/add':
                 user_state = {'step': 'WAITING_CHAIN', 'last_time': time.time()}
                 keyboard = {"inline_keyboard": [[{"text": "BSC", "callback_data": "chain_bsc"}, {"text": "ETH", "callback_data": "chain_eth"}, {"text": "BASE", "callback_data": "chain_base"}]]}
-                send_telegram_alert(t("choose_chain"), reply_markup=keyboard)
+                send_telegram_alert("👇 Chọn Mạng lưới để thêm coin Thủ Công:", reply_markup=keyboard)
+                
             elif text == '/del':
                 user_state = {'step': 'WAITING_DEL_COIN', 'last_time': time.time()}
-                send_telegram_alert(t("del_prompt"))
-            elif text == '/set_buy':
-                user_state = {'step': 'WAITING_SET_BUY', 'last_time': time.time()}
-                send_telegram_alert(t("set_buy_prompt"))
-            elif text == '/set_time':
-                user_state = {'step': 'WAITING_SET_TIME', 'last_time': time.time()}
-                send_telegram_alert(t("set_time_prompt"))
+                send_telegram_alert("🗑 Nhập CA hoặc Tên coin muốn xóa (Có thể xóa cả ở Auto và Thủ công):")
+                
             elif text == '/add_wallet':
                 user_state = {'step': 'WAITING_SMART_CHAIN', 'last_time': time.time()}
                 keyboard = {"inline_keyboard": [[{"text": "BSC", "callback_data": "chain_bsc"}, {"text": "ETH", "callback_data": "chain_eth"}, {"text": "BASE", "callback_data": "chain_base"}]]}
-                send_telegram_alert(t("smart_wallet_prompt"), reply_markup=keyboard)
+                send_telegram_alert("🐋 Chọn Mạng lưới của Smart Money:", reply_markup=keyboard)
+                
             elif text == '/add_key':
                 user_state = {'step': 'WAITING_ADD_KEY', 'last_time': time.time()}
-                send_telegram_alert("Nhập API Key mới:")
+                send_telegram_alert("🔑 Nhập API Key mới:")
+                
             elif text == '/keys':
                 msg = f"🔑 <b>KHO CHỨA API KEYS ({len(API_KEYS)} Keys)</b>\n\n"
                 for i, k in enumerate(API_KEYS):
                     is_active = "(Đang dùng 🟢)" if i == current_api_index else ""
                     msg += f"🔹 Key {i+1}: <code>{k[:10]}...{k[-10:]}</code> {is_active}\n"
                 send_telegram_alert(msg)
-            elif text == '/language':
-                keyboard = {"inline_keyboard": [[{"text": "🇻🇳 Tiếng Việt", "callback_data": "lang_vi"}, {"text": "🇬🇧 English", "callback_data": "lang_en"}]]}
-                send_telegram_alert(t("lang_prompt"), reply_markup=keyboard)
-            elif text == '/help': send_telegram_alert(t("help"))
+                
+            elif text == '/help': 
+                help_msg = (
+                    "🤖 <b>BẢNG LỆNH ĐIỀU KHIỂN CAO CẤP</b>\n\n"
+                    "🔹 /list - Xem toàn bộ list coin 2 rổ\n"
+                    "🔹 /status - Xem cấu hình & API\n"
+                    "🔹 /set_time - Đổi khung giờ quét\n"
+                    "🔹 /set_buy - Đổi số lệnh mua\n"
+                    "🔹 /set_max_auto - Sức chứa rổ Auto\n"
+                    "🔹 /auto_scan - Bật/Tắt bắt coin tự động\n"
+                    "🔹 /add - Thêm coin Thủ công\n"
+                    "🔹 /del - Xóa coin\n"
+                    "🔹 /add_wallet - Theo dõi Smart Money\n"
+                    "🔹 /add_key - Nạp thêm đạn API\n"
+                    "🔹 /keys - Xem kho API Key\n"
+                    "🔹 /cancel - Hủy thao tác lỡ bấm"
+                )
+                send_telegram_alert(help_msg)
     except Exception: pass
 
+# --- WALLET API: LUỒNG SMART MONEY ---
 def run_smart_money_bot():
     global current_api_index
     alerted_txs = set()
@@ -423,118 +441,148 @@ def run_smart_money_bot():
                                 decimals = int(tx.get('token_decimals', 18))
                                 amount = float(tx.get('value', 0)) / (10 ** decimals)
                                 ca = tx.get('address', '')
-                                send_telegram_alert(t("smart_alert", w['name'], amount, token_name, ca, explorer, tx_hash))
+                                msg = f"🚨 <b>SMART MONEY MUA HÀNG!</b>\n\n👤 <b>{w['name']}</b>\n💰 Nhận: {amount:,.2f} <b>{token_name}</b>\n📝 CA: <code>{ca}</code>\n🔗 <a href='https://{explorer}/tx/{tx_hash}'>Xem TX</a>"
+                                send_telegram_alert(msg)
                 elif res.status_code in [401, 429, 403]:
                     current_api_index = (current_api_index + 1) % len(API_KEYS)
             except Exception: pass
             time.sleep(2)
         time.sleep(120) 
 
+# --- LOGIC BOT CHÍNH (QUÉT CÁ MẬP + AUTO CLEANUP) ---
 def run_bot():
-    global current_api_index
+    global current_api_index, AUTO_COINS
     alerted_wallets = set()
     if not API_KEYS: return
-    send_telegram_alert(t("start"))
+    send_telegram_alert("🚀 <b>Siêu Bot (Bản Cập Nhật Tách Rổ Kép) Đã Khởi Động!</b>\nGõ /help để khám phá.")
 
     while True:
-        if not COINS_TO_TRACK or not API_KEYS:
+        if not API_KEYS:
             time.sleep(60)
             continue
             
-        for coin in list(COINS_TO_TRACK): 
-            try:
-                coin_name = coin["name"]
-                chain = coin["chain"]
-                ca = coin["ca"]
-                lp = coin["lp"]
-                explorer = EXPLORERS.get(chain, "etherscan.io")
-                
-                url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/transfers"
-                time_ago = datetime.now(timezone.utc) - timedelta(hours=CONFIG['TIME_FRAME'])
-                
-                buy_counts = defaultdict(int)
-                transfer_graph = defaultdict(list) 
-                cursor = None
-                reached_time_limit = False
-                page_count = 0 
+        now = time.time()
+        
+        # 1. HỆ THỐNG DỌN RÁC (Chỉ áp dụng cho AUTO_COINS)
+        for coin in list(AUTO_COINS):
+            # Nếu đã gửi câu hỏi mà 5 phút ko ai bấm -> Tự reset thành NO (Gia hạn 24h)
+            if coin.get('prompt_sent'):
+                if now - coin.get('prompt_time', 0) > 300:
+                    coin['prompt_sent'] = False
+                    coin['last_alert_at'] = now
+                    send_telegram_alert(f"⏳ Lệnh hỏi xóa <b>{coin['name']}</b> đã tự hủy do quá 5 phút.\nHệ thống tự động gia hạn theo dõi thêm 24h.")
+            # Nếu coin đã nằm xó 24h ko ai gom -> Hỏi ý kiến sếp
+            elif now - coin.get('last_alert_at', now) > 86400:
+                coin['prompt_sent'] = True
+                coin['prompt_time'] = now
+                keyboard = {"inline_keyboard": [
+                    [{"text": "✅ Xóa Coin", "callback_data": f"dead_yes_{coin['ca']}"},
+                     {"text": "❌ Theo dõi thêm 24h", "callback_data": f"dead_no_{coin['ca']}"}]
+                ]}
+                send_telegram_alert(f"🗑 <b>DỌN RÁC AUTO SCAN:</b>\n\nĐồng coin <b>{coin['name']}</b> không có cá mập nào gom sau 24h. Bạn có muốn xóa nó khỏi rổ theo dõi không?", reply_markup=keyboard)
 
-                while not reached_time_limit and page_count < 50:
-                    page_count += 1
-                    params = {"chain": chain, "limit": 100}
-                    if cursor: params["cursor"] = cursor
-                    
-                    headers = get_current_headers()
-                    response = requests.get(url, params=params, headers=headers, timeout=10)
-                    
-                    if response.status_code != 200:
-                        if response.status_code in [429, 401, 402, 403]:
-                            old_index = current_api_index
-                            current_api_index += 1
-                            
-                            if current_api_index >= len(API_KEYS):
-                                current_api_index = 0 
-                                send_telegram_alert(t("api_dead", len(API_KEYS)))
-                                time.sleep(1800) 
-                                break 
-                            else:
-                                send_telegram_alert(t("api_switch", old_index + 1, current_api_index + 1))
-                                time.sleep(2)
-                                page_count -= 1 
-                                continue 
-                        else: break
-                        
-                    data = response.json()
-                    if not data.get('result'): break
-
-                    for tx in data['result']:
-                        tx_time_str = tx['block_timestamp'][:19] 
-                        tx_time = datetime.strptime(tx_time_str, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-                        
-                        if tx_time < time_ago:
-                            reached_time_limit = True
-                            break 
-
-                        sender = tx['from_address'].lower()
-                        receiver = tx['to_address'].lower()
-                        
-                        if sender == lp.lower(): buy_counts[receiver] += 1
-                        elif sender != '0x0000000000000000000000000000000000000000': transfer_graph[sender].append(receiver)
-                            
-                    cursor = data.get("cursor")
-                    if not cursor: break
-                    time.sleep(0.5) 
-
-                for original_buyer, count in buy_counts.items():
-                    if count >= CONFIG['MIN_BUYS'] and original_buyer not in alerted_wallets:
-                        path = [original_buyer]
-                        current_wallet = original_buyer
-                        visited = {original_buyer}
-                        sold_to_lp = False
-                        
-                        while current_wallet in transfer_graph:
-                            receivers = transfer_graph[current_wallet]
-                            next_wallet = receivers[0] 
-                            
-                            if next_wallet == lp.lower():
-                                sold_to_lp = True
-                                break
-                            if next_wallet in visited: break 
-                            
-                            path.append(next_wallet)
-                            visited.add(next_wallet)
-                            current_wallet = next_wallet
-
-                        sec_info = format_security_info(ca, chain)
-                        defi_info = t("defi_info", get_token_price(ca, chain))
-
-                        if len(path) == 1:
-                            msg = t("diamond", CONFIG['TIME_FRAME'], coin_name, original_buyer, count, sec_info, defi_info, explorer, original_buyer)
-                            send_telegram_alert(msg)
-                            alerted_wallets.add(original_buyer)
-
-            except Exception: pass
-            time.sleep(3) 
+        # 2. HỆ THỐNG QUÉT CÁ MẬP GỘP 2 RỔ
+        # Lặp qua cả 2 rổ, nhưng áp dụng luật riêng cho từng rổ
+        all_configs = [("AUTO", AUTO_COINS), ("MANUAL", MANUAL_COINS)]
+        
+        for list_type, coin_list in all_configs:
+            time_frame = CONFIG[f"{list_type}_TIME_FRAME"]
+            min_buys = CONFIG[f"{list_type}_MIN_BUYS"]
             
+            for coin in list(coin_list): 
+                try:
+                    coin_name = coin["name"]
+                    chain = coin["chain"]
+                    ca = coin["ca"]
+                    lp = coin["lp"]
+                    explorer = EXPLORERS.get(chain, "etherscan.io")
+                    
+                    url = f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/transfers"
+                    time_ago = datetime.now(timezone.utc) - timedelta(hours=time_frame)
+                    
+                    buy_counts = defaultdict(int)
+                    transfer_graph = defaultdict(list) 
+                    cursor = None
+                    reached_time_limit = False
+                    page_count = 0 
+
+                    while not reached_time_limit and page_count < 50:
+                        page_count += 1
+                        params = {"chain": chain, "limit": 100}
+                        if cursor: params["cursor"] = cursor
+                        
+                        response = requests.get(url, params=params, headers=get_current_headers(), timeout=10)
+                        
+                        if response.status_code != 200:
+                            if response.status_code in [429, 401, 402, 403]:
+                                old_index = current_api_index
+                                current_api_index += 1
+                                if current_api_index >= len(API_KEYS):
+                                    current_api_index = 0 
+                                    send_telegram_alert(f"💀 <b>BÁO ĐỘNG ĐỎ</b>: Hết {len(API_KEYS)} Key! Nghỉ 30 phút.")
+                                    time.sleep(1800) 
+                                    break 
+                                else:
+                                    send_telegram_alert(f"🔄 <b>ĐỔI KEY</b>: Chuyển sang <b>Key số {current_api_index + 1}</b>!")
+                                    time.sleep(2)
+                                    page_count -= 1 
+                                    continue 
+                            else: break
+                            
+                        data = response.json()
+                        if not data.get('result'): break
+
+                        for tx in data['result']:
+                            tx_time_str = tx['block_timestamp'][:19] 
+                            tx_time = datetime.strptime(tx_time_str, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+                            
+                            if tx_time < time_ago:
+                                reached_time_limit = True
+                                break 
+
+                            sender = tx['from_address'].lower()
+                            receiver = tx['to_address'].lower()
+                            
+                            if sender == lp.lower(): buy_counts[receiver] += 1
+                            elif sender != '0x0000000000000000000000000000000000000000': transfer_graph[sender].append(receiver)
+                                
+                        cursor = data.get("cursor")
+                        if not cursor: break
+                        time.sleep(0.5) 
+
+                    for original_buyer, count in buy_counts.items():
+                        if count >= min_buys and original_buyer not in alerted_wallets:
+                            path = [original_buyer]
+                            current_wallet = original_buyer
+                            visited = {original_buyer}
+                            sold_to_lp = False
+                            
+                            while current_wallet in transfer_graph:
+                                receivers = transfer_graph[current_wallet]
+                                next_wallet = receivers[0] 
+                                if next_wallet == lp.lower():
+                                    sold_to_lp = True
+                                    break
+                                if next_wallet in visited: break 
+                                path.append(next_wallet)
+                                visited.add(next_wallet)
+                                current_wallet = next_wallet
+
+                            sec_info = format_security_info(ca, chain)
+                            defi_info = f"📊 Giá token: {get_token_price(ca, chain)}"
+
+                            if len(path) == 1:
+                                msg = f"💎 <b>CÁ MẬP GOM KÍN ({time_frame}H) - {list_type}</b>\n\n🪙 <b>Coin:</b> {coin_name}\n💳 <code>{original_buyer}</code>\n🟢 Đã mua {count} lệnh.\n{sec_info}{defi_info}\n🔍 <a href='https://{explorer}/address/{original_buyer}'>Xem ví gom</a>"
+                                send_telegram_alert(msg)
+                                alerted_wallets.add(original_buyer)
+                                
+                                # NẾU LÀ COIN AUTO MÀ CÓ CÁ MẬP GOM -> RESET ĐỒNG HỒ 24H CHỐNG DỌN RÁC
+                                if list_type == "AUTO":
+                                    coin['last_alert_at'] = time.time()
+
+                except Exception: pass
+                time.sleep(3) 
+                
         time.sleep(300) 
 
 if __name__ == "__main__":
