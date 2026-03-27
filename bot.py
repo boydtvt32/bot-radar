@@ -8,15 +8,15 @@ from flask import Flask, request
 from threading import Thread
 
 # =========================================================
-# BSC SNIPER BOT (FORENSICS V27 - AUTO PROMOTION & LIMITS)
-# Features: LP Gatekeeper, Sniper Trace, Auto-Promote to Manual
+# BSC SNIPER BOT (FORENSICS V28 - MICRO-MANAGEMENT)
+# Features: LP Gatekeeper, Sniper Trace, Auto-Promote, Per-Coin Config
 # =========================================================
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (Forensics V27 - Auto Promotion) đang hoạt động!"
+    return "BSC Sniper Bot (Forensics V28 - Micro Management) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
@@ -35,15 +35,11 @@ API_KEYS = list(set(RAW_API_KEYS))
 TELEGRAM_BOT_TOKEN = '8526113763:AAH3wANXx126AloxzAKJQrKJAPWiQm7Kb6Q'
 TELEGRAM_CHAT_ID = '1976782751'
 
+# CONFIG VÀO CHẾ ĐỘ QUẢN LÝ CHUNG (Các thông số Cũ đã được chuyển vào từng Đồng Coin)
 CONFIG = {
-    "MANUAL_TIME_FRAME": 6,  
-    "MANUAL_MIN_BUYS": 2,    
-    "AUTO_TIME_FRAME": 2,    
-    "AUTO_MIN_BUYS": 2,      
     "MAX_AUTO_COINS": 10,     
-    "MAX_MANUAL_COINS": 20,  # 🔥 V27: Giới hạn riêng cho rổ Thủ công  
+    "MAX_MANUAL_COINS": 20,    
     "AUTO_SCAN": True,
-    "MIN_BNB_BUY": 0.01,     
     "MIN_LP_BNB": 1.0,       
     "LANGUAGE": "vi",
     "NOTIFY_NEW_COIN": True  
@@ -123,11 +119,17 @@ def get_bnb_balance(wallet):
     except: pass
     return 0.0
 
+# 🔥 V28: CẤP PHÁT THÔNG SỐ CÁ NHÂN HÓA (MẶC ĐỊNH CHO MỌI COIN) 🔥
 def init_coin_dict(name, ca, lp):
     return {
         "name": name, "chain": "bsc", "ca": ca, "lp": lp, 
-        "scan_interval": 5, "tx_limit": 100, "last_scan_time": 0, 
-        "last_alert_at": time.time(), "prompt_sent": False, 
+        # Cấu hình độc lập (Default theo lệnh sếp)
+        "time_frame": 2,      # Khung giờ soi: 2h
+        "min_buys": 2,        # Đòi hỏi: Ví gom >= 2 lệnh
+        "min_bnb": 0.1,       # Mức Tay To: 0.1 BNB
+        "scan_interval": 5,   # Tần suất quét: 5 phút/lần
+        # Dữ liệu nội bộ
+        "tx_limit": 100, "last_scan_time": 0, "last_alert_at": time.time(), "prompt_sent": False, 
         "tx_cache": [], "last_fetch_timestamp": "",
         "accumulators": {}, "alerted_wallets": {} 
     }
@@ -146,8 +148,7 @@ def process_new_coin_async(new_token, lp_address):
     sec_info = None
     for attempt in range(40):
         sec_info = check_bsc_security(new_token)
-        if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10 and sec_info.get('is_lp_locked'):
-            break
+        if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10 and sec_info.get('is_lp_locked'): break
         time.sleep(15) 
 
     is_clean = sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10 and sec_info.get('is_lp_locked')
@@ -177,35 +178,65 @@ def moralis_webhook():
     except: pass
     return "OK", 200
 
+# --- BẢNG ĐIỀU KHIỂN MỚI SIÊU GỌN GÀNG (V28) ---
 def send_main_menu():
     notify_text = "🔔 Báo Coin Mới: BẬT" if CONFIG.get("NOTIFY_NEW_COIN", True) else "🔕 Báo Coin Mới: TẮT"
     kb = {"inline_keyboard": [
-        [{"text": "📊 Xem Cấu Hình", "callback_data": "menu_status"}, {"text": "📋 List Đang Quét", "callback_data": "menu_list"}],
-        [{"text": "📒 Sổ Tay Ví Gom", "callback_data": "menu_wallet_ledger"}],
-        [{"text": "⚙️ Tần suất quét", "callback_data": "menu_freq_coin"}, {"text": "🗑 Xóa Coin", "callback_data": "menu_del"}],
+        [{"text": "📊 Xem Tổng Quan", "callback_data": "menu_status"}, {"text": "📋 Danh Sách Cấu Hình", "callback_data": "menu_list"}],
+        [{"text": "📒 Xem Sổ Tay Ví Gom", "callback_data": "menu_wallet_ledger"}],
+        [{"text": "⚙️ Cài Đặt Riêng Biệt (Từng Coin)", "callback_data": "menu_config_coin_list"}],
+        [{"text": "🗑 Xóa Coin", "callback_data": "menu_del"}, {"text": "➕ Thêm Coin Thủ Công", "callback_data": "menu_add"}],
         [{"text": "⛔ Chặn CA (Blacklist)", "callback_data": "menu_blacklist_add"}, {"text": "👁 Xem Blacklist", "callback_data": "menu_blacklist_view"}],
-        [{"text": "⏱ Đổi Khung Giờ", "callback_data": "menu_set_time"}, {"text": "🛒 Đổi Số Lệnh Gom", "callback_data": "menu_set_buy"}],
-        [{"text": "➕ Thêm Coin Thủ Công", "callback_data": "menu_add"}, {"text": "📦 Giới Hạn Lưu Trữ", "callback_data": "menu_set_max"}],
-        [{"text": "🐋 Cài Tay To (BNB)", "callback_data": "menu_set_bnb"}, {"text": "🏦 Cài Min Pool (BNB)", "callback_data": "menu_set_minlp"}],
+        [{"text": "📦 Giới Hạn Lưu Trữ", "callback_data": "menu_set_max"}, {"text": "🏦 Cài Min Pool (BNB)", "callback_data": "menu_set_minlp"}],
         [{"text": notify_text, "callback_data": "menu_toggle_new"}, {"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
-    send_telegram_alert("🎛 <b>BSC SNIPER BOT (V27 - Auto Promotion)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=kb)
+    send_telegram_alert("🎛 <b>BSC SNIPER BOT (V28 - Micro Config)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=kb)
+
+def send_coin_config_menu(coin):
+    # Sub-menu (Menu con) dành riêng cho từng coin
+    ca_short = coin['ca'][:10]
+    msg = (f"⚙️ <b>BẢNG CẤU HÌNH CÁ NHÂN</b>\n\n"
+           f"🪙 <b>{coin['name']}</b> (<code>{ca_short}...</code>)\n"
+           f"⏱ Khung giờ soi: <b>{coin.get('time_frame', 2)}h</b>\n"
+           f"🛒 Ví phải gom: <b>>= {coin.get('min_buys', 2)} lệnh</b>\n"
+           f"🐋 Mức Tay to: <b>>= {coin.get('min_bnb', 0.1)} BNB</b>\n"
+           f"⏳ Tần suất quét: <b>{coin.get('scan_interval', 5)} phút/lần</b>\n\n"
+           f"👉 Chọn thông số bạn muốn thay đổi:")
+    
+    kb = {"inline_keyboard": [
+        [{"text": f"⏱ Đổi Khung giờ ({coin.get('time_frame', 2)}h)", "callback_data": f"cfg_time_{ca_short}"}],
+        [{"text": f"🛒 Đổi Số lệnh gom ({coin.get('min_buys', 2)})", "callback_data": f"cfg_buy_{ca_short}"}],
+        [{"text": f"🐋 Đổi Mức Tay to ({coin.get('min_bnb', 0.1)} BNB)", "callback_data": f"cfg_bnb_{ca_short}"}],
+        [{"text": f"⏳ Đổi Tần suất ({coin.get('scan_interval', 5)}p)", "callback_data": f"cfg_freq_{ca_short}"}],
+        [{"text": "🔙 Quay lại Danh Sách Coin", "callback_data": "menu_config_coin_list"}]
+    ]}
+    send_telegram_alert(msg, reply_markup=kb)
+
 
 def execute_command(cmd):
     global CONFIG, user_state, BLACKLIST_COINS, AUTO_COINS, MANUAL_COINS
     if cmd == 'status':
-        msg = (f"⚙️ <b>CẤU HÌNH HIỆN TẠI</b>\n"
-               f"🤖 Auto: <b>{CONFIG['AUTO_TIME_FRAME']}h</b> | Ví gom >= <b>{CONFIG['AUTO_MIN_BUYS']} lệnh</b> | Sức chứa: <b>{CONFIG['MAX_AUTO_COINS']}</b> coin\n"
-               f"👤 Thủ công: <b>{CONFIG['MANUAL_TIME_FRAME']}h</b> | Ví gom >= <b>{CONFIG['MANUAL_MIN_BUYS']} lệnh</b> | Sức chứa: <b>{CONFIG['MAX_MANUAL_COINS']}</b> coin\n"
-               f"🐋 Tay To: <b>>= {CONFIG['MIN_BNB_BUY']} BNB</b> | 🏦 Min Pool: <b>>= {CONFIG['MIN_LP_BNB']} BNB</b>\n"
-               f"⛔ CA cấm: <b>{len(BLACKLIST_COINS)}</b> | 🛡 Auto-Promote: <b>BẬT</b>\n")
+        msg = (f"⚙️ <b>TỔNG QUAN HỆ THỐNG</b>\n"
+               f"🤖 Sức chứa Rổ Auto: <b>{CONFIG['MAX_AUTO_COINS']}</b> coin\n"
+               f"👤 Sức chứa Rổ VIP: <b>{CONFIG['MAX_MANUAL_COINS']}</b> coin\n"
+               f"🏦 Min Pool đón lỏng: <b>>= {CONFIG['MIN_LP_BNB']} BNB</b>\n"
+               f"⛔ CA cấm (Rác): <b>{len(BLACKLIST_COINS)}</b>\n"
+               f"🛡 Auto-Promote (Thăng hạng tự động): <b>BẬT</b>\n"
+               f"<i>* Các thông số Soi ví đã được cài độc lập cho từng coin.</i>")
         send_telegram_alert(msg)
     elif cmd == 'list':
-        msg = f"📋 <b>DANH SÁCH BSC</b>\n\n🤖 <b>AUTO ({len(AUTO_COINS)}/{CONFIG['MAX_AUTO_COINS']})</b>\n"
-        for c in AUTO_COINS: msg += f" ├ <b>{c['name']}</b>\n └ CA: <code>{c['ca']}</code>\n"
+        msg = f"📋 <b>DANH SÁCH & CẤU HÌNH</b>\n\n🤖 <b>AUTO ({len(AUTO_COINS)}/{CONFIG['MAX_AUTO_COINS']})</b>\n"
+        for c in AUTO_COINS: msg += f" ├ <b>{c['name']}</b> ({c.get('scan_interval')}p | {c.get('time_frame')}h | {c.get('min_buys')}L | {c.get('min_bnb')}B)\n"
         msg += f"\n👤 <b>THỦ CÔNG / VIP ({len(MANUAL_COINS)}/{CONFIG['MAX_MANUAL_COINS']})</b>\n"
-        for c in MANUAL_COINS: msg += f" ├ <b>{c['name']}</b>\n └ CA: <code>{c['ca']}</code>\n"
+        for c in MANUAL_COINS: msg += f" ├ <b>{c['name']}</b> ({c.get('scan_interval')}p | {c.get('time_frame')}h | {c.get('min_buys')}L | {c.get('min_bnb')}B)\n"
         send_telegram_alert(msg)
+    elif cmd == 'config_coin_list':
+        all_coins = AUTO_COINS + MANUAL_COINS
+        if not all_coins: send_telegram_alert("⚠️ Danh sách hiện tại đang trống!"); return
+        kb = {"inline_keyboard": []}
+        for c in all_coins:
+            kb["inline_keyboard"].append([{"text": f"⚙️ Cài đặt: {c['name']}", "callback_data": f"open_cfg_{c['ca'][:10]}"}])
+        send_telegram_alert("👇 Chọn đồng coin bạn muốn <b>Thay đổi Cấu hình (Mức gom, Khung giờ...)</b>:", reply_markup=kb)
     elif cmd == 'wallet_ledger':
         kb = {"inline_keyboard": []}; found = False
         for c in AUTO_COINS + MANUAL_COINS:
@@ -228,10 +259,9 @@ def execute_command(cmd):
     elif cmd == 'toggle_new':
         CONFIG["NOTIFY_NEW_COIN"] = not CONFIG.get("NOTIFY_NEW_COIN", True)
         send_telegram_alert(f"✅ Báo Coin Mới: {'BẬT' if CONFIG['NOTIFY_NEW_COIN'] else 'TẮT (Silent)'}")
-    elif cmd in ['set_time', 'set_buy', 'set_max']:
-        kb = {"inline_keyboard": [[{"text": "🤖 Rổ Auto", "callback_data": f"{cmd}_auto"}, {"text": "👤 Rổ Thủ Công", "callback_data": f"{cmd}_manual"}]]}
-        send_telegram_alert(f"Cài đặt cho rổ nào?", reply_markup=kb)
-    elif cmd == 'set_bnb': user_state = {'step': 'WAITING_BNB_VAL', 'last_time': time.time()}; send_telegram_alert("🐋 Nhập số BNB tối thiểu / lệnh:")
+    elif cmd == 'set_max':
+        kb = {"inline_keyboard": [[{"text": "🤖 Rổ Auto", "callback_data": "set_max_auto"}, {"text": "👤 Rổ Thủ Công", "callback_data": "set_max_manual"}]]}
+        send_telegram_alert(f"Cài sức chứa cho rổ nào?", reply_markup=kb)
     elif cmd == 'set_minlp': user_state = {'step': 'WAITING_MINLP_VAL', 'last_time': time.time()}; send_telegram_alert("🏦 Nhập số BNB Min Pool (Lọc Dev nghèo):")
     elif cmd == 'cancel': user_state.clear(); send_telegram_alert("🚫 Đã hủy thao tác.")
 
@@ -245,6 +275,27 @@ def process_update(item):
             
             all_c = AUTO_COINS + MANUAL_COINS
             
+            # --- LUỒNG SETTINGS CHO TỪNG COIN (V28) ---
+            if data.startswith("open_cfg_"):
+                ca_short = data.split("_")[2]
+                coin = next((c for c in all_c if c['ca'].startswith(ca_short)), None)
+                if coin: send_coin_config_menu(coin)
+                return
+            
+            if data.startswith("cfg_"): # Form: cfg_type_caShort
+                parts = data.split("_")
+                cfg_type, ca_short = parts[1], parts[2]
+                coin = next((c for c in all_c if c['ca'].startswith(ca_short)), None)
+                if not coin: return
+                
+                user_state = {'step': f"WAITING_CFG_{cfg_type.upper()}", 'target_ca': coin['ca'], 'last_time': time.time()}
+                if cfg_type == "time": send_telegram_alert(f"🕒 Đang cấu hình: {coin['name']}\n👉 Nhập <b>Khung giờ soi</b> (VD: 2, 6, 12):")
+                elif cfg_type == "buy": send_telegram_alert(f"🛒 Đang cấu hình: {coin['name']}\n👉 Nhập <b>Số lệnh gom tối thiểu 1 ví phải có</b> (VD: 2, 5):")
+                elif cfg_type == "bnb": send_telegram_alert(f"🐋 Đang cấu hình: {coin['name']}\n👉 Nhập <b>Số BNB tối thiểu</b> cho 1 lệnh (VD: 0.1, 0.5):")
+                elif cfg_type == "freq": send_telegram_alert(f"⏳ Đang cấu hình: {coin['name']}\n👉 Nhập <b>Tần suất quét</b> (Bao nhiêu phút/lần, VD: 5, 10):")
+                return
+
+            # --- LUỒNG DEEP TRACE (V26 BUG FIX) ---
             if data.startswith("w_c_"):
                 ca_short = data.split("_")[2]
                 coin = next((c for c in all_c if c['ca'].startswith(ca_short)), None)
@@ -309,15 +360,11 @@ def process_update(item):
                 AUTO_COINS[:] = [c for c in AUTO_COINS if not c['ca'].startswith(ca_short)]
                 send_telegram_alert("🗑 Đã xóa!"); user_state.clear(); return
 
-            # Xử lý nút set_time, set_buy, set_max...
-            for cmd in ["set_time", "set_buy", "set_max"]:
-                if data in [f"{cmd}_auto", f"{cmd}_manual"]:
-                    lst = "AUTO" if "auto" in data else "MANUAL"
-                    user_state = {'step': f"WAITING_{cmd.split('_')[1].upper()}_VAL_{lst}", 'last_time': time.time()}
-                    if cmd == "set_time": send_telegram_alert(f"🕒 Nhập số giờ (VD: 2):")
-                    elif cmd == "set_buy": send_telegram_alert(f"🛒 Nhập số lệnh gom yêu cầu (VD: 2):")
-                    elif cmd == "set_max": send_telegram_alert(f"📦 Nhập số lượng coin tối đa cho rổ {lst}:")
-                    return
+            if data in ["set_max_auto", "set_max_manual"]:
+                lst = "AUTO" if "auto" in data else "MANUAL"
+                user_state = {'step': f"WAITING_MAX_VAL_{lst}", 'last_time': time.time()}
+                send_telegram_alert(f"📦 Nhập số lượng coin tối đa cho rổ {lst}:")
+                return
 
         if "message" in item:
             text = item["message"].get("text", "").strip()
@@ -326,7 +373,26 @@ def process_update(item):
             elif user_state:
                 if text == '/cancel': execute_command('cancel'); return
                 step = user_state.get('step')
+                target_ca = user_state.get('target_ca')
                 
+                # --- XỬ LÝ NHẬP LIỆU CẤU HÌNH TỪNG COIN ---
+                if step and step.startswith("WAITING_CFG_") and target_ca:
+                    try:
+                        val = float(text)
+                        for c in AUTO_COINS + MANUAL_COINS:
+                            if c['ca'] == target_ca:
+                                if "TIME" in step: c['time_frame'] = int(val)
+                                elif "BUY" in step: c['min_buys'] = int(val)
+                                elif "BNB" in step: c['min_bnb'] = val
+                                elif "FREQ" in step: c['scan_interval'] = int(val)
+                                send_telegram_alert(f"✅ Đã lưu cấu hình mới thành công!")
+                                send_coin_config_menu(c) # Gọi lại bảng để sếp xem đã update
+                                break
+                        user_state.clear()
+                    except: send_telegram_alert("❌ Vui lòng nhập số hợp lệ!")
+                    return
+
+                # --- LUỒNG BÌNH THƯỜNG ---
                 if step == 'WAITING_CA':
                     if text.lower() in BLACKLIST_COINS: send_telegram_alert("🚫 CA nằm trong Blacklist."); user_state.clear(); return
                     user_state['ca'] = text; user_state['step'] = 'WAITING_LP'; user_state['last_time'] = time.time(); send_telegram_alert("✅ Nhập tiếp địa chỉ LP:")
@@ -339,7 +405,7 @@ def process_update(item):
                     except: pass
                     if len(MANUAL_COINS) >= CONFIG.get('MAX_MANUAL_COINS', 20): MANUAL_COINS.pop(0)
                     MANUAL_COINS.append(init_coin_dict(coin_name, ca, lp))
-                    send_telegram_alert(f"🎉 Đã thêm vào rổ Thủ Công/VIP!"); user_state.clear()
+                    send_telegram_alert(f"🎉 Đã thêm vào rổ Thủ Công/VIP! (Đã nạp mặc định: Soi 2h, Đòi 2 Lệnh, Mức 0.1 BNB, Quét 5p)"); user_state.clear()
                 
                 elif step == 'WAITING_BLACKLIST_CA':
                     if text.lower() not in BLACKLIST_COINS:
@@ -348,18 +414,8 @@ def process_update(item):
                         AUTO_COINS[:] = [c for c in AUTO_COINS if c['ca'].lower() != text.lower()]
                         send_telegram_alert(f"✅ Đã chặn vĩnh viễn <code>{text.lower()}</code>")
                     user_state.clear()
-                elif step == 'WAITING_BNB_VAL':
-                    try: CONFIG['MIN_BNB_BUY'] = float(text); send_telegram_alert(f"✅ Đã cài Tay to: <b>{text} BNB</b>."); user_state.clear()
-                    except: pass
                 elif step == 'WAITING_MINLP_VAL':
                     try: CONFIG['MIN_LP_BNB'] = float(text); send_telegram_alert(f"🏦 Lọc Pool Dev nghèo: <b>Min {text} BNB</b>."); user_state.clear()
-                    except: pass
-                
-                elif step.startswith('WAITING_TIME_VAL_'):
-                    try: CONFIG[f"{step.split('_')[3]}_TIME_FRAME"] = int(text); send_telegram_alert(f"✅ Đã lưu."); user_state.clear()
-                    except: pass
-                elif step.startswith('WAITING_BUY_VAL_'):
-                    try: CONFIG[f"{step.split('_')[3]}_MIN_BUYS"] = int(text); send_telegram_alert(f"✅ Đã lưu."); user_state.clear()
                     except: pass
                 elif step.startswith('WAITING_MAX_VAL_'):
                     try: 
@@ -382,18 +438,19 @@ def listen_telegram_commands():
 
 def run_bot():
     try:
-        print("--- LUONG QUET V27 DA KHOI DONG (Auto Promote) ---", flush=True)
-        send_telegram_alert("🚀 <b>Bot Săn Meme V27 đã sẵn sàng!</b>")
+        print("--- LUONG QUET V28 DA KHOI DONG (Micro Config) ---", flush=True)
+        send_telegram_alert("🚀 <b>Bot Săn Meme V28 đã sẵn sàng!</b>")
         while True:
             now = time.time()
             for list_type, coin_list in [("AUTO", AUTO_COINS), ("MANUAL", MANUAL_COINS)]:
-                time_frame = CONFIG[f"{list_type}_TIME_FRAME"]
-                min_buys = CONFIG[f"{list_type}_MIN_BUYS"] 
-                min_bnb = CONFIG['MIN_BNB_BUY']
-                
                 for coin in list(coin_list):
                     try:
+                        # Dùng thông số CÁ NHÂN HÓA của từng đồng coin thay vì lấy global
+                        time_frame = coin.get('time_frame', 2)
+                        min_buys = coin.get('min_buys', 2)
+                        min_bnb = coin.get('min_bnb', 0.1)
                         scan_interval_sec = coin.get('scan_interval', 5) * 60
+                        
                         if now - coin.get('last_scan_time', 0) < scan_interval_sec: continue 
                         coin['last_scan_time'] = time.time()
                         
@@ -453,9 +510,7 @@ def run_bot():
                                     wallet_receipts.setdefault(receiver, []).extend(wallet_receipts[sender])
                                     wallet_receipts.pop(sender, None)
 
-                        # 🔥 V27: LOGIC THĂNG HẠNG (AUTO-PROMOTE) 🔥
                         is_promoted = False
-                        
                         for wallet, buys in wallet_receipts.items():
                             if len(buys) >= min_buys:
                                 if len(buys) > coin['alerted_wallets'].get(wallet, 0):
@@ -469,22 +524,19 @@ def run_bot():
                                            f"📊 <b>Chi tiết {len(buys)} lệnh gom:</b>\n")
                                     for b in buys: msg += f" ├ <i>{b['time']}</i> : Mua <b>{b['bnb']:.3f} BNB</b>\n"
                                     
-                                    # Thêm dòng báo thăng hạng nếu nó đang ở rổ Auto
                                     if list_type == "AUTO":
-                                        msg += "\n🛡 <i>Đã tự động chuyển sang rổ Thủ Công (VIP) để bảo vệ khỏi bị xóa!</i>"
+                                        msg += "\n🛡 <i>Đã thăng hạng lên rổ VIP. Cấu hình săn vẫn được bảo tồn!</i>"
                                         is_promoted = True
 
                                     ca_short = ca[:10]
                                     kb = {"inline_keyboard": [[{"text": "🔍 Check Ví Này (Dòng tiền)", "callback_data": f"w_w_{ca_short}_{wallet}"}]]}
                                     send_telegram_alert(msg, reply_markup=kb)
                         
-                        # THỰC THI THĂNG HẠNG SAU KHI XONG VÒNG LẶP
                         if is_promoted and list_type == "AUTO":
                             if len(MANUAL_COINS) >= CONFIG.get("MAX_MANUAL_COINS", 20): MANUAL_COINS.pop(0)
-                            MANUAL_COINS.append(coin)
+                            MANUAL_COINS.append(coin) # Bê nguyên cái dict (chứa cả config riêng) sang nhà mới
                             try: AUTO_COINS.remove(coin)
                             except: pass
-                            print(f"   => [THANG HANG] {coin['name']} da duoc cap The Xanh vao ro Thu Cong!", flush=True)
 
                     except Exception as e: print(f"   ⚠️ LOI: {e}", flush=True)
                     time.sleep(2) 
