@@ -8,15 +8,15 @@ from flask import Flask, request
 from threading import Thread
 
 # =========================================================
-# BSC SNIPER BOT (V31 PRO - IRONCLAD LOCK)
-# Features: Strict LP Lock Check (>= 95% AND >= 7 Days)
+# BSC SNIPER BOT (V32 PRO - CASE SENSITIVITY FIX)
+# Features: Fixed Manual Add Case Mismatch Bug
 # =========================================================
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (V31 Pro) đang hoạt động!"
+    return "BSC Sniper Bot (V32 Pro) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
@@ -78,7 +78,6 @@ def setup_telegram_commands():
     try: requests.post(url, json={"commands": [{"command": "menu", "description": "🎛 Mở Bảng Điều Khiển Bot"}]}, timeout=5)
     except: pass
 
-# --- 🔥 LÕI V31: THUẬT TOÁN ĐO LP TRÊN 7 NGÀY & >= 95% 🔥 ---
 def check_bsc_security(ca):
     try:
         url = f"https://api.gopluslabs.io/api/v1/token_security/56?contract_addresses={ca}"
@@ -91,8 +90,8 @@ def check_bsc_security(ca):
                 s_tax = float(result.get("sell_tax", 0) or 0) * 100
                 
                 is_lp_locked = False
-                total_locked_percent = 0.0        # Tổng phần trăm có khóa/đốt (dù là 1 ngày)
-                total_valid_locked_percent = 0.0  # Chỉ tính những mảnh LP khóa >= 7 ngày hoặc Đốt
+                total_locked_percent = 0.0        
+                total_valid_locked_percent = 0.0  
                 max_days_left = 0
                 is_burn_majority = False
                 
@@ -103,16 +102,15 @@ def check_bsc_security(ca):
                         is_lck = str(h.get("is_locked", "0")) == "1"
                         is_burn = addr in ["0x0000000000000000000000000000000000000000", "0x000000000000000000000000000000000000dead"]
                         
-                        # Chuyển đổi phần trăm LP
                         try:
                             pct_str = str(h.get("percent", "0"))
                             pct = float(pct_str)
-                            if pct > 1.0: pct = pct / 100.0 # Format API trả về
+                            if pct > 1.0: pct = pct / 100.0 
                         except: pct = 0.0
 
                         if is_burn:
                             total_locked_percent += pct
-                            total_valid_locked_percent += pct # Đốt vĩnh viễn nên luôn hợp lệ (>7 ngày)
+                            total_valid_locked_percent += pct 
                             if pct > 0.5: is_burn_majority = True
                         elif is_lck:
                             total_locked_percent += pct
@@ -125,28 +123,18 @@ def check_bsc_security(ca):
                                         days_left = (int(end_ts_str) - int(time.time())) // 86400
                                     except: pass
                             
-                            # Cập nhật thời gian khóa dài nhất
                             if days_left > max_days_left: max_days_left = days_left
-                            
-                            # CHỈ CỘNG VÀO BIẾN HỢP LỆ NẾU KHÓA TRÊN 7 NGÀY
-                            if days_left >= 7:
-                                total_valid_locked_percent += pct
+                            if days_left >= 7: total_valid_locked_percent += pct
 
-                # ĐÁNH GIÁ ĐIỀU KIỆN SỐNG CÒN CỦA SẾP
                 if total_valid_locked_percent >= 0.95:
                     is_lp_locked = True
-                    if is_burn_majority:
-                        lock_info = f"🔥 ĐÃ ĐỐT (Vĩnh viễn) | Đạt {total_valid_locked_percent*100:.1f}%"
-                    else:
-                        lock_info = f"🟢 ĐÃ KHÓA ({max_days_left} ngày) | Đạt {total_valid_locked_percent*100:.1f}%"
+                    if is_burn_majority: lock_info = f"🔥 ĐÃ ĐỐT (Vĩnh viễn) | Đạt {total_valid_locked_percent*100:.1f}%"
+                    else: lock_info = f"🟢 ĐÃ KHÓA ({max_days_left} ngày) | Đạt {total_valid_locked_percent*100:.1f}%"
                 else:
-                    is_lp_locked = False # Trượt bài test
-                    if total_locked_percent >= 0.95:
-                        lock_info = f"🔴 KHÓA QUÁ NGẮN (Chỉ {max_days_left} ngày) | Bỏ qua!"
-                    elif total_locked_percent > 0:
-                        lock_info = f"⚠️ KHÓA GIẢ MẠO (Khóa {total_locked_percent*100:.1f}%) | Bỏ qua!"
-                    else:
-                        lock_info = "🔓 MỞ (Chưa khóa)"
+                    is_lp_locked = False 
+                    if total_locked_percent >= 0.95: lock_info = f"🔴 KHÓA QUÁ NGẮN (Chỉ {max_days_left} ngày) | Bỏ qua!"
+                    elif total_locked_percent > 0: lock_info = f"⚠️ KHÓA GIẢ MẠO (Khóa {total_locked_percent*100:.1f}%) | Bỏ qua!"
+                    else: lock_info = "🔓 MỞ (Chưa khóa)"
                 
                 return {"is_honeypot": is_hp, "buy_tax": b_tax, "sell_tax": s_tax, "is_lp_locked": is_lp_locked, "lock_detail": lock_info}
     except: pass
@@ -171,9 +159,10 @@ def get_bnb_balance(wallet):
     except: pass
     return 0.0
 
+# 🔥 ÉP LOWERCASE NGAY TỪ LÚC TẠO SỔ TAY 🔥
 def init_coin_dict(name, ca, lp):
     return {
-        "name": name, "chain": "bsc", "ca": ca, "lp": lp, 
+        "name": name, "chain": "bsc", "ca": ca.lower(), "lp": lp.lower(), 
         "time_frame": 2, "min_buys": 2, "min_bnb": 0.1, "scan_interval": 5, 
         "tx_limit": 100, "last_scan_time": 0, "last_alert_at": time.time(), "prompt_sent": False, 
         "tx_cache": [], "last_fetch_timestamp": "",
@@ -182,6 +171,8 @@ def init_coin_dict(name, ca, lp):
 
 def process_new_coin_async(new_token, lp_address):
     global AUTO_COINS, CONFIG, MANUAL_COINS, WBNB_CA
+    new_token = new_token.lower()
+    lp_address = lp_address.lower()
     coin_name = f"BSC_{new_token[:4]}"
     try:
         res = requests.get(f"https://deep-index.moralis.io/api/v2.2/erc20/metadata?chain=bsc&addresses={new_token}", headers=get_current_headers(), timeout=5)
@@ -194,7 +185,6 @@ def process_new_coin_async(new_token, lp_address):
     sec_info = None
     for attempt in range(40):
         sec_info = check_bsc_security(new_token)
-        # Sẽ chỉ dừng vòng lặp ngâm 10 phút nếu Dev đáp ứng đủ: Không Honeypot + Thuế < 10% + Khóa >= 95% + Khóa >= 7 Ngày
         if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10 and sec_info.get('is_lp_locked'): break
         time.sleep(15) 
 
@@ -218,8 +208,8 @@ def moralis_webhook():
             for log in data.get('logs', []):
                 if log.get('topic0') == '0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9':
                     t0, t1 = "0x" + log.get('topic1', '')[-40:], "0x" + log.get('topic2', '')[-40:]
-                    new_token = t1 if t0.lower() == WBNB_CA else t0
-                    if new_token.lower() in BLACKLIST_COINS or any(c['ca'].lower() == new_token.lower() for c in AUTO_COINS + MANUAL_COINS): continue
+                    new_token = t1.lower() if t0.lower() == WBNB_CA else t0.lower()
+                    if new_token in BLACKLIST_COINS or any(c['ca'] == new_token for c in AUTO_COINS + MANUAL_COINS): continue
                     lp = "0x" + log.get('data', '')[26:66]
                     Thread(target=process_new_coin_async, args=(new_token, lp), daemon=True).start()
     except: pass
@@ -236,7 +226,7 @@ def send_main_menu():
         [{"text": "📦 Giới Hạn Lưu Trữ", "callback_data": "menu_set_max"}, {"text": "🏦 Cài Min Pool (BNB)", "callback_data": "menu_set_minlp"}],
         [{"text": notify_text, "callback_data": "menu_toggle_new"}, {"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
-    send_telegram_alert("🎛 <b>BSC SNIPER BOT (V31 - Ironclad Lock)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=kb)
+    send_telegram_alert("🎛 <b>BSC SNIPER BOT (V32 PRO)</b>\n👉 Chọn chức năng bên dưới:", reply_markup=kb)
 
 def send_coin_config_menu(coin):
     ca_short = coin['ca'][:10]
@@ -318,14 +308,15 @@ def process_update(item):
             
             if data.startswith("open_cfg_"):
                 ca_short = data.split("_")[2]
-                coin = next((c for c in all_c if c['ca'].startswith(ca_short)), None)
+                # 🔥 FIX ÉP LOWERCASE LÚC SO SÁNH
+                coin = next((c for c in all_c if c['ca'].lower().startswith(ca_short.lower())), None)
                 if coin: send_coin_config_menu(coin)
                 return
             
             if data.startswith("cfg_"): 
                 parts = data.split("_")
                 cfg_type, ca_short = parts[1], parts[2]
-                coin = next((c for c in all_c if c['ca'].startswith(ca_short)), None)
+                coin = next((c for c in all_c if c['ca'].lower().startswith(ca_short.lower())), None)
                 if not coin: return
                 user_state = {'step': f"WAITING_CFG_{cfg_type.upper()}", 'target_ca': coin['ca'], 'last_time': time.time()}
                 if cfg_type == "time": send_telegram_alert(f"🕒 Đang cấu hình: {coin['name']}\n👉 Nhập <b>Khung giờ soi</b> (VD: 2):")
@@ -336,7 +327,7 @@ def process_update(item):
 
             if data.startswith("w_c_"):
                 ca_short = data.split("_")[2]
-                coin = next((c for c in all_c if c['ca'].startswith(ca_short)), None)
+                coin = next((c for c in all_c if c['ca'].lower().startswith(ca_short.lower())), None)
                 if not coin or not coin.get('accumulators'): return
                 kb = {"inline_keyboard": []}
                 for w, buys in coin['accumulators'].items():
@@ -347,8 +338,8 @@ def process_update(item):
             if data.startswith("w_w_"): 
                 parts = data.split("_")
                 ca_short, wallet = parts[2], parts[3] if len(parts) == 4 else parts[2]
-                coin = next((c for c in all_c if c['ca'].startswith(ca_short)), None)
-                if not coin: send_telegram_alert("⚠️ Dữ liệu coin đã bị xóa."); return
+                coin = next((c for c in all_c if c['ca'].lower().startswith(ca_short.lower())), None)
+                if not coin: send_telegram_alert("⚠️ Dữ liệu coin đã bị xóa (Hoặc bot vừa khởi động lại)."); return
                 
                 bnb_bal = get_bnb_balance(wallet)
                 token_decimals = 18 
@@ -386,7 +377,7 @@ def process_update(item):
 
             if data.startswith("delcoin_"):
                 ca_short = data.split("_")[1]
-                coin = next((c for c in all_c if c['ca'].startswith(ca_short)), None)
+                coin = next((c for c in all_c if c['ca'].lower().startswith(ca_short.lower())), None)
                 if coin:
                     user_state = {'step': 'WAITING_DEL_CONFIRM', 'last_time': time.time(), 'target_ca': coin['ca']}
                     send_telegram_alert(f"❓ Xóa coin <b>{coin['name']}</b>?", reply_markup={"inline_keyboard": [[{"text": "✅ Xóa", "callback_data": f"confirmdel_{coin['ca'][:10]}"}, {"text": "❌ Tôi nhầm", "callback_data": "menu_del"}]]})
@@ -394,8 +385,8 @@ def process_update(item):
             if data.startswith("confirmdel_"):
                 if not user_state or user_state.get('step') != 'WAITING_DEL_CONFIRM': return
                 ca_short = data.split("_")[1]
-                MANUAL_COINS[:] = [c for c in MANUAL_COINS if not c['ca'].startswith(ca_short)]
-                AUTO_COINS[:] = [c for c in AUTO_COINS if not c['ca'].startswith(ca_short)]
+                MANUAL_COINS[:] = [c for c in MANUAL_COINS if not c['ca'].lower().startswith(ca_short.lower())]
+                AUTO_COINS[:] = [c for c in AUTO_COINS if not c['ca'].lower().startswith(ca_short.lower())]
                 send_telegram_alert("🗑 Đã xóa!"); user_state.clear(); return
 
             if data in ["set_max_auto", "set_max_manual"]:
@@ -431,9 +422,9 @@ def process_update(item):
 
                 if step == 'WAITING_CA':
                     if text.lower() in BLACKLIST_COINS: send_telegram_alert("🚫 CA nằm trong Blacklist."); user_state.clear(); return
-                    user_state['ca'] = text; user_state['step'] = 'WAITING_LP'; user_state['last_time'] = time.time(); send_telegram_alert("✅ Nhập tiếp địa chỉ LP:")
+                    user_state['ca'] = text.lower(); user_state['step'] = 'WAITING_LP'; user_state['last_time'] = time.time(); send_telegram_alert("✅ Nhập tiếp địa chỉ LP:")
                 elif step == 'WAITING_LP':
-                    ca, lp = user_state['ca'], text
+                    ca, lp = user_state['ca'], text.lower()
                     coin_name = f"BSC_{ca[:4]}" 
                     try:
                         res = requests.get(f"https://deep-index.moralis.io/api/v2.2/erc20/metadata?chain=bsc&addresses={ca}", headers=get_current_headers(), timeout=5)
@@ -474,8 +465,8 @@ def listen_telegram_commands():
 
 def run_bot():
     try:
-        print("--- LUONG QUET V31 PRO DA KHOI DONG ---", flush=True)
-        send_telegram_alert("🚀 <b>Bot Săn Meme V31 Pro đã sẵn sàng!</b>\n🛡 Kích hoạt bộ lọc thép: Khóa >= 95% VÀ Thời gian >= 7 Ngày.")
+        print("--- LUONG QUET V32 PRO DA KHOI DONG ---", flush=True)
+        send_telegram_alert("🚀 <b>Bot Săn Meme V32 Pro đã sẵn sàng!</b>\n🛡 Kích hoạt bộ lọc thép: Khóa >= 95% VÀ Thời gian >= 7 Ngày.")
         while True:
             now = time.time()
             for list_type, coin_list in [("AUTO", AUTO_COINS), ("MANUAL", MANUAL_COINS)]:
