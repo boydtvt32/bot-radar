@@ -113,8 +113,11 @@ def format_bsc_security(ca):
 
 @app.route('/webhook', methods=['POST'])
 def moralis_webhook():
+    print("\n📥 [WEBHOOK] Co nguoi go cua!", flush=True)
     global AUTO_COINS, CONFIG
-    if not CONFIG.get('AUTO_SCAN', True): return "Auto scan is disabled", 200
+    if not CONFIG.get('AUTO_SCAN', True): 
+        print("   => Tinh nang Bao coin dang TAT.", flush=True)
+        return "Auto scan is disabled", 200
     try:
         data = request.json
         if data and data.get('confirmed'):
@@ -126,19 +129,14 @@ def moralis_webhook():
                     wbnb = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"
                     new_token = token1 if token0.lower() == wbnb else token0
                     lp_address = "0x" + log.get('data', '')[26:66]
+                    
+                    print(f"   => Bắt duoc coin moi: {new_token}", flush=True)
 
                     if any(c['ca'].lower() == new_token.lower() for c in AUTO_COINS + MANUAL_COINS): continue
 
                     coin_name = f"BSC_{new_token[:4]}"
-                    try:
-                        meta_url = f"https://deep-index.moralis.io/api/v2.2/erc20/metadata?chain=bsc&addresses={new_token}"
-                        res = requests.get(meta_url, headers=get_current_headers(), timeout=5)
-                        if res.status_code == 200:
-                            meta_data = res.json()
-                            if len(meta_data) > 0 and meta_data[0].get('symbol'):
-                                coin_name = meta_data[0].get('symbol')
-                    except: pass
-
+                    # Tạm bỏ vụ gọi API lấy tên để tránh lỗi do API kiệt sức
+                    
                     sec_info = check_bsc_security(new_token)
                     is_clean = False
                     if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10:
@@ -152,18 +150,14 @@ def moralis_webhook():
                         msg = f"🆕 <b>CÓ COIN MỚI VỪA TẠO THANH KHOẢN!</b>\n\n"
                         msg += f"🪙 Tên Coin: <b>{coin_name}</b>\n📝 CA: <code>{new_token}</code>\n"
                         msg += f"🛡 <b>Bảo mật:</b> Honeypot: {hp_str} | Thuế: {bt}% / {st}%\n\n"
-                        
-                        if is_clean:
-                            msg += "✅ <b>Đạt chuẩn an toàn:</b> Đã tự động đưa vào rổ AUTO quét Cá mập!"
-                        else:
-                            msg += "⚠️ <b>Rủi ro cao:</b> Đã bỏ qua, không đưa vào danh sách quét."
-                        
                         send_telegram_alert(msg)
 
                     if is_clean:
                         if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']: AUTO_COINS.pop(0)
                         AUTO_COINS.append({"name": coin_name, "chain": "bsc", "ca": new_token, "lp": lp_address, "last_alert_at": time.time(), "prompt_sent": False})
-    except: pass
+                        print(f"   => Da them vao ro AUTO.", flush=True)
+    except Exception as e: 
+        print(f"❌ [WEBHOOK LOI]: {e}", flush=True)
     return "OK", 200
 
 def send_main_menu():
