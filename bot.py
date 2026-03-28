@@ -8,16 +8,16 @@ from flask import Flask, request
 from threading import Thread
 
 # =========================================================
-# MULTI-CHAIN SNIPER BOT (V38 PRO - MARKET RADAR)
+# MULTI-CHAIN SNIPER BOT (V40 PRO - CHAIN-SPECIFIC LOCK)
 # Chains: BSC (BNB) & BASE (ETH)
-# Features: Daily Coin Counter, Strict LP Lock, Min Pool
+# Features: Independent LP Lock Toggle & Days for BSC/BASE
 # =========================================================
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Multi-Chain Sniper Bot (V38 Pro) đang hoạt động!"
+    return "Multi-Chain Sniper Bot (V40 Pro) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
@@ -38,6 +38,7 @@ API_KEYS = list(set(RAW_API_KEYS))
 TELEGRAM_BOT_TOKEN = '8526113763:AAH3wANXx126AloxzAKJQrKJAPWiQm7Kb6Q'
 TELEGRAM_CHAT_ID = '1976782751'
 
+# 🔥 V40: TÁCH RIÊNG CẤU HÌNH KHÓA CHO BSC VÀ BASE
 CONFIG = {
     "MAX_AUTO_COINS": 10,     
     "MAX_MANUAL_COINS": 20,    
@@ -45,7 +46,11 @@ CONFIG = {
     "AUTO_SCAN_BASE": True,  
     "MIN_LP_BSC": 1.0,       
     "MIN_LP_BASE": 0.3,      
-    "NOTIFY_NEW_COIN": True  
+    "NOTIFY_NEW_COIN": True,
+    "REQUIRE_LP_LOCK_BSC": True,   # Công tắc khóa BSC
+    "REQUIRE_LP_LOCK_BASE": True,  # Công tắc khóa BASE
+    "MIN_LOCK_DAYS_BSC": 7,        # Ngày khóa BSC
+    "MIN_LOCK_DAYS_BASE": 7        # Ngày khóa BASE
 }
 
 MANUAL_COINS = []
@@ -54,7 +59,6 @@ user_state = {}
 current_api_index = 0 
 BLACKLIST_COINS = ["0x55d398326f99059ff775485246999027b3197955".lower()]
 
-# 🔥 V38: KHO CHỨA DỮ LIỆU ĐẾM COIN TRONG NGÀY
 DAILY_COIN_STATS = {
     "bsc": [],
     "base": []
@@ -115,6 +119,9 @@ def check_security(ca, chain="bsc"):
                 max_days_left = 0
                 is_burn_majority = False
                 
+                # 🔥 Lấy số ngày min theo từng chain
+                min_req_days = CONFIG.get(f"MIN_LOCK_DAYS_{chain.upper()}", 7) 
+                
                 lp_holders = result.get("lp_holders", [])
                 if lp_holders:
                     for h in lp_holders:
@@ -143,7 +150,7 @@ def check_security(ca, chain="bsc"):
                                     except: pass
                             
                             if days_left > max_days_left: max_days_left = days_left
-                            if days_left >= 7: total_valid_locked_percent += pct
+                            if days_left >= min_req_days: total_valid_locked_percent += pct
 
                 if total_valid_locked_percent >= 0.95:
                     is_lp_locked = True
@@ -202,33 +209,51 @@ def process_new_coin_async(new_token, lp_address, chain="bsc"):
 
     print(f"\n   => [{prefix}] [LOC RAC] Dang kiem tra thanh khoan Pool cua {coin_name}...", flush=True)
     
-    min_lp = CONFIG['MIN_LP_BSC'] if chain == "bsc" else CONFIG['MIN_LP_BASE']
+    min_lp = CONFIG[f'MIN_LP_{prefix}']
     lp_native_bal = get_coin_balance(lp_address, NATIVE_CA[chain], 18, chain)
     
     if lp_native_bal < min_lp:
         print(f"   => [{prefix}] 🚫 [TU CHOI] Pool {coin_name} qua beo! ({lp_native_bal:.3f} {sym} < Min {min_lp} {sym}). Suut!!", flush=True)
         return
 
-    print(f"   => [{prefix}] ✅ [DUYET] Thanh khoan tot ({lp_native_bal:.3f} {sym}). Dang cho check LP Lock (10 phut)...", flush=True)
+    print(f"   => [{prefix}] ✅ [DUYET] Thanh khoan tot ({lp_native_bal:.3f} {sym}). Kiem tra bao mat...", flush=True)
 
     sec_info = None
+    is_clean = False
+    
+    # 🔥 Lấy yêu cầu khóa theo chain hiện tại
+    require_lock = CONFIG.get(f'REQUIRE_LP_LOCK_{prefix}', True)
+    min_days_req = CONFIG.get(f'MIN_LOCK_DAYS_{prefix}', 7)
+    
     for attempt in range(40):
         sec_info = check_security(new_token, chain)
-        if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10 and sec_info.get('is_lp_locked'):
-            print(f"   => [{prefix}] 🔒 ĐÃ KHÓA LP HOP LE o lan check thu {attempt+1}! Chuan bi len song!", flush=True)
-            break
         
+        if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10:
+            if require_lock:
+                if sec_info.get('is_lp_locked'): is_clean = True
+            else:
+                is_clean = True 
+                
+        if is_clean:
+            print(f"   => [{prefix}] 🟢 [PASS] Dat chuan o lan check thu {attempt+1}! Chuan bi len song!", flush=True)
+            break
+            
         detail = sec_info['lock_detail'] if sec_info else "Chua co data"
-        print(f"   => [{prefix}] [GoPlus] Chua dat chuan khoa >=95% (>7 ngay). Hien tai: {detail}. Doi 15s... (Lan {attempt+1}/40)", flush=True)
+        if require_lock:
+            print(f"   => [{prefix}] Chua dat chuan khoa >=95% (>{min_days_req} ngay). Hien tai: {detail}. Doi 15s... (Lan {attempt+1}/40)", flush=True)
+        else:
+            print(f"   => [{prefix}] Cho GoPlus cap nhat du lieu HP/Thue... Doi 15s... (Lan {attempt+1}/40)", flush=True)
         time.sleep(15) 
 
-    is_clean = sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10 and sec_info.get('is_lp_locked')
-
     if not is_clean:
-        print(f"   => [{prefix}] 🗑 [LOAI BO] Het 10 phut Dev {coin_name} van khong khoa LP hoac la Honeypot.", flush=True)
+        print(f"   => [{prefix}] 🗑 [LOAI BO] Het 10 phut Dev {coin_name} van chua dat yeu cau bao mat.", flush=True)
 
     if is_clean:
         msg = f"🆕 <b>SIÊU PHẨM MỚI MẠNG {prefix}!</b>\n\n🪙 Tên Coin: <b>{coin_name}</b>\n📝 CA: <code>{new_token}</code>\n🏦 Pool gốc: <b>{lp_native_bal:.2f} {sym}</b>\n{format_security(sec_info)}\n"
+        
+        if not require_lock:
+            msg += f"⚠️ <i>Chú ý: Chế độ 'Bỏ Qua Khóa LP' mạng {prefix} đang BẬT. Cẩn thận Rug Pull!</i>\n"
+            
         send_telegram_alert(msg)
         if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']: AUTO_COINS.pop(0)
         AUTO_COINS.append(init_coin_dict(coin_name, new_token, lp_address, chain))
@@ -252,9 +277,7 @@ def moralis_webhook():
                     w_native = NATIVE_CA[chain_name]
                     new_token = t1.lower() if t0.lower() == w_native else t0.lower()
                     
-                    # 🔥 V38: GHI NHẬN LỊCH SỬ COIN MỚI (UTC+7)
                     vn_now = datetime.now(timezone.utc) + timedelta(hours=7)
-                    # Dọn dẹp data cũ của ngày hôm qua để chống tràn RAM
                     DAILY_COIN_STATS[chain_name] = [ts for ts in DAILY_COIN_STATS[chain_name] if ts.date() == vn_now.date()]
                     DAILY_COIN_STATS[chain_name].append(vn_now)
                     
@@ -269,22 +292,32 @@ def moralis_webhook():
     return "OK", 200
 
 def send_main_menu():
-    st_bsc = "🟢 Bật BSC" if CONFIG.get("AUTO_SCAN_BSC", True) else "🔴 Tắt BSC"
-    st_base = "🟢 Bật BASE" if CONFIG.get("AUTO_SCAN_BASE", True) else "🔴 Tắt BASE"
+    st_bsc = "🟢 Quét BSC" if CONFIG.get("AUTO_SCAN_BSC", True) else "🔴 Tắt BSC"
+    st_base = "🟢 Quét BASE" if CONFIG.get("AUTO_SCAN_BASE", True) else "🔴 Tắt BASE"
+    
+    # 🔥 Tách biến Menu hiển thị riêng
+    lk_bsc = "🟢 Khóa BSC" if CONFIG.get("REQUIRE_LP_LOCK_BSC", True) else "🔴 Bỏ Khóa BSC"
+    lk_base = "🟢 Khóa BASE" if CONFIG.get("REQUIRE_LP_LOCK_BASE", True) else "🔴 Bỏ Khóa BASE"
+    md_bsc = CONFIG.get("MIN_LOCK_DAYS_BSC", 7)
+    md_base = CONFIG.get("MIN_LOCK_DAYS_BASE", 7)
     
     kb = {"inline_keyboard": [
         [{"text": "📊 Xem Tổng Quan", "callback_data": "menu_status"}, {"text": "📋 Danh Sách Cấu Hình", "callback_data": "menu_list"}],
-        # 🔥 Thêm Nút Đếm Coin Mới ở dòng thứ 2
         [{"text": "📈 Đếm Coin Mới", "callback_data": "menu_count_coins"}, {"text": "📒 Xem Sổ Tay Ví", "callback_data": "menu_wallet_ledger"}],
         [{"text": "⚙️ Cài Đặt Từng Coin", "callback_data": "menu_config_coin_list"}],
         [{"text": "🗑 Xóa Coin", "callback_data": "menu_del"}, {"text": "➕ Thêm Coin Thủ Công", "callback_data": "menu_add"}],
         [{"text": "⛔ Chặn CA (Blacklist)", "callback_data": "menu_blacklist_add"}, {"text": "👁 Xem Blacklist", "callback_data": "menu_blacklist_view"}],
         [{"text": "📦 Giới Hạn Rổ", "callback_data": "menu_set_max"}, {"text": "🏦 Cài Min Pool", "callback_data": "menu_set_minlp"}],
+        
+        # 🔥 Hàng quản lý Khóa LP TÁCH BIỆT:
+        [{"text": lk_bsc, "callback_data": "menu_toggle_lock_bsc"}, {"text": f"⏱ Ngày BSC ({md_bsc}N)", "callback_data": "menu_set_lockdays_bsc"}],
+        [{"text": lk_base, "callback_data": "menu_toggle_lock_base"}, {"text": f"⏱ Ngày BASE ({md_base}N)", "callback_data": "menu_set_lockdays_base"}],
+        
         [{"text": "🔑 Quản Lý API Keys", "callback_data": "menu_keys"}],
-        [{"text": f"Báo Coin Mới: {st_bsc}", "callback_data": "menu_toggle_bsc"}, {"text": f"Báo Coin Mới: {st_base}", "callback_data": "menu_toggle_base"}],
+        [{"text": f"{st_bsc}", "callback_data": "menu_toggle_bsc"}, {"text": f"{st_base}", "callback_data": "menu_toggle_base"}],
         [{"text": "🚫 Hủy Lệnh", "callback_data": "menu_cancel"}]
     ]}
-    send_telegram_alert("🎛 <b>MULTI-CHAIN SNIPER BOT (V38 PRO)</b>\n👉 Chọn chức năng điều khiển bên dưới:", reply_markup=kb)
+    send_telegram_alert("🎛 <b>MULTI-CHAIN SNIPER BOT (V40 PRO)</b>\n👉 Chọn chức năng điều khiển bên dưới:", reply_markup=kb)
 
 def send_coin_config_menu(coin):
     ca_short = coin['ca'][:10]
@@ -309,14 +342,17 @@ def send_coin_config_menu(coin):
 def execute_command(cmd):
     global CONFIG, user_state, BLACKLIST_COINS, AUTO_COINS, MANUAL_COINS, API_KEYS, DAILY_COIN_STATS
     if cmd == 'status':
+        st_l_bsc = f">= {CONFIG.get('MIN_LOCK_DAYS_BSC', 7)} Ngày" if CONFIG.get('REQUIRE_LP_LOCK_BSC', True) else "BỎ QUA (Rủi ro)"
+        st_l_base = f">= {CONFIG.get('MIN_LOCK_DAYS_BASE', 7)} Ngày" if CONFIG.get('REQUIRE_LP_LOCK_BASE', True) else "BỎ QUA (Rủi ro)"
         msg = (f"⚙️ <b>TỔNG QUAN HỆ THỐNG</b>\n"
                f"🤖 Sức chứa Rổ Auto: <b>{CONFIG['MAX_AUTO_COINS']}</b> coin\n"
                f"👤 Sức chứa Rổ VIP: <b>{CONFIG['MAX_MANUAL_COINS']}</b> coin\n"
                f"🏦 Min Pool BSC: <b>>= {CONFIG['MIN_LP_BSC']} BNB</b>\n"
                f"🏦 Min Pool BASE: <b>>= {CONFIG['MIN_LP_BASE']} ETH</b>\n"
-               f"🔒 An toàn LP: <b>Khóa >= 95% VÀ >= 7 Ngày</b>\n"
+               f"🔒 Khóa LP BSC: <b>{st_l_bsc}</b>\n"
+               f"🔒 Khóa LP BASE: <b>{st_l_base}</b>\n"
                f"⛔ CA cấm (Rác): <b>{len(BLACKLIST_COINS)}</b>\n"
-               f"🔑 Đạn API (Moralis): <b>{len(API_KEYS)} Keys</b>\n"
+               f"🔑 Đạn API: <b>{len(API_KEYS)} Keys</b>\n"
                f"📡 Quét BSC: <b>{'BẬT' if CONFIG['AUTO_SCAN_BSC'] else 'TẮT'}</b>\n"
                f"📡 Quét BASE: <b>{'BẬT' if CONFIG['AUTO_SCAN_BASE'] else 'TẮT'}</b>\n"
                f"🛡 Auto-Promote: <b>BẬT</b>")
@@ -328,7 +364,6 @@ def execute_command(cmd):
         for c in MANUAL_COINS: msg += f" ├ <b>{c['name']}</b> ({c.get('scan_interval')}p | {c.get('time_frame')}h | {c.get('min_buys')}L | {c.get('min_bnb')} {NATIVE_SYM[c['chain']]})\n"
         send_telegram_alert(msg)
         
-    # 🔥 V38: XỬ LÝ LỆNH ĐẾM COIN 🔥
     elif cmd == 'count_coins':
         vn_now = datetime.now(timezone.utc) + timedelta(hours=7)
         today = vn_now.date()
@@ -336,7 +371,6 @@ def execute_command(cmd):
         msg = f"📈 <b>THỐNG KÊ COIN MỚI TRONG NGÀY</b>\n<i>(Tính từ 0h00 ngày {today.strftime('%d/%m/%Y')} - Giờ VN)</i>\n\n"
         
         for chain, name, icon in [("bsc", "BSC (BNB)", "🟡"), ("base", "BASE (ETH)", "🔵")]:
-            # Chỉ lọc lấy data ngày hôm nay
             DAILY_COIN_STATS[chain] = [ts for ts in DAILY_COIN_STATS[chain] if ts.date() == today]
             
             c_0_6 = c_6_12 = c_12_18 = c_18_24 = 0
@@ -353,7 +387,7 @@ def execute_command(cmd):
             msg += f" ├ Từ 12h - 18h: có <b>{c_12_18}</b> coin mới\n"
             msg += f" └ Từ 18h - 24h: có <b>{c_18_24}</b> coin mới\n\n"
             
-        msg += "<i>Lưu ý: Dữ liệu này đếm tổng số coin tạo ra (gồm cả coin rác đã bị lọc) tính từ lúc Bot khởi động đến hiện tại.</i>"
+        msg += "<i>Lưu ý: Dữ liệu đếm gồm cả coin rác đã bị lọc. Tính từ lúc Bot khởi động.</i>"
         send_telegram_alert(msg)
 
     elif cmd == 'config_coin_list':
@@ -392,6 +426,25 @@ def execute_command(cmd):
         CONFIG["AUTO_SCAN_BASE"] = not CONFIG.get("AUTO_SCAN_BASE", True)
         send_telegram_alert(f"🔵 Báo Coin Mới (BASE): {'BẬT' if CONFIG['AUTO_SCAN_BASE'] else 'TẮT'}")
         send_main_menu()
+
+    # 🔥 V40: Xử lý menu toggle tách biệt
+    elif cmd == 'toggle_lock_bsc':
+        CONFIG["REQUIRE_LP_LOCK_BSC"] = not CONFIG.get("REQUIRE_LP_LOCK_BSC", True)
+        st = "ĐÃ BẬT Khóa LP" if CONFIG["REQUIRE_LP_LOCK_BSC"] else "ĐÃ TẮT Khóa LP (Cảnh báo rủi ro)"
+        send_telegram_alert(f"🟡 Mạng BSC: {st}")
+        send_main_menu()
+    elif cmd == 'toggle_lock_base':
+        CONFIG["REQUIRE_LP_LOCK_BASE"] = not CONFIG.get("REQUIRE_LP_LOCK_BASE", True)
+        st = "ĐÃ BẬT Khóa LP" if CONFIG["REQUIRE_LP_LOCK_BASE"] else "ĐÃ TẮT Khóa LP (Cảnh báo rủi ro)"
+        send_telegram_alert(f"🔵 Mạng BASE: {st}")
+        send_main_menu()
+        
+    elif cmd == 'set_lockdays_bsc':
+        user_state = {'step': 'WAITING_LOCK_DAYS_BSC', 'last_time': time.time()}
+        send_telegram_alert("🟡 <b>MẠNG BSC</b>: Nhập số ngày khóa LP tối thiểu (VD: 0, 1, 7, 30):")
+    elif cmd == 'set_lockdays_base':
+        user_state = {'step': 'WAITING_LOCK_DAYS_BASE', 'last_time': time.time()}
+        send_telegram_alert("🔵 <b>MẠNG BASE</b>: Nhập số ngày khóa LP tối thiểu (VD: 0, 1, 7, 30):")
 
     elif cmd == 'set_max':
         kb = {"inline_keyboard": [[{"text": "🤖 Rổ Auto", "callback_data": "set_max_auto"}, {"text": "👤 Rổ Thủ Công", "callback_data": "set_max_manual"}]]}
@@ -543,6 +596,18 @@ def process_update(item):
                     user_state.clear()
                     return
 
+                # 🔥 V40: Ghi đè số ngày khóa theo từng mạng
+                if step and step.startswith("WAITING_LOCK_DAYS_"):
+                    try:
+                        chain_target = step.split('_')[3]
+                        val = int(text)
+                        CONFIG[f'MIN_LOCK_DAYS_{chain_target}'] = val
+                        send_telegram_alert(f"✅ Mạng {chain_target}: Đã lưu cấu hình khóa LP >= <b>{val}</b> ngày.")
+                        send_main_menu()
+                        user_state.clear()
+                    except: send_telegram_alert("❌ Nhập số nguyên không hợp lệ sếp ơi!")
+                    return
+
                 if step and step.startswith("WAITING_CFG_") and target_ca:
                     try:
                         val = float(text)
@@ -612,8 +677,8 @@ def listen_telegram_commands():
 
 def run_bot():
     try:
-        print("--- LUONG QUET V38 PRO DA KHOI DONG ---", flush=True)
-        send_telegram_alert("🚀 <b>Multi-Chain Sniper V38 Pro đã sẵn sàng!</b>\n🛡 Tích hợp Bộ đếm Coin (Market Radar).")
+        print("--- LUONG QUET V40 PRO DA KHOI DONG ---", flush=True)
+        send_telegram_alert("🚀 <b>Multi-Chain Sniper V40 Pro đã sẵn sàng!</b>\n🛡 Bộ luật Khóa LP hoạt động độc lập cho BSC và BASE.")
         while True:
             now = time.time()
             for list_type, coin_list in [("AUTO", AUTO_COINS), ("MANUAL", MANUAL_COINS)]:
