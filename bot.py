@@ -8,15 +8,15 @@ from flask import Flask, request
 from threading import Thread
 
 # =========================================================
-# BSC SNIPER BOT (V32 PRO - CASE SENSITIVITY FIX)
-# Features: Fixed Manual Add Case Mismatch Bug
+# BSC SNIPER BOT (V32 PRO - FULL LOGS RESTORED)
+# Features: Strict LP Lock >=95% & >=7 Days, Case Fix, Full Console Logs
 # =========================================================
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "BSC Sniper Bot (V32 Pro) đang hoạt động!"
+    return "BSC Sniper Bot (V32 Pro - Full Logs) đang hoạt động!"
 
 def run_server():
     port = int(os.environ.get('PORT', 10000))
@@ -159,7 +159,6 @@ def get_bnb_balance(wallet):
     except: pass
     return 0.0
 
-# 🔥 ÉP LOWERCASE NGAY TỪ LÚC TẠO SỔ TAY 🔥
 def init_coin_dict(name, ca, lp):
     return {
         "name": name, "chain": "bsc", "ca": ca.lower(), "lp": lp.lower(), 
@@ -174,21 +173,38 @@ def process_new_coin_async(new_token, lp_address):
     new_token = new_token.lower()
     lp_address = lp_address.lower()
     coin_name = f"BSC_{new_token[:4]}"
+    
     try:
         res = requests.get(f"https://deep-index.moralis.io/api/v2.2/erc20/metadata?chain=bsc&addresses={new_token}", headers=get_current_headers(), timeout=5)
         if res.status_code == 200 and len(res.json()) > 0 and res.json()[0].get('symbol'): coin_name = res.json()[0].get('symbol')
     except: pass
 
+    # 🔥 LOG HIỂN THỊ TRÊN RENDER: Check thanh khoản
+    print(f"\n   => [LOC RAC] Dang kiem tra thanh khoan Pool cua {coin_name}...", flush=True)
     lp_wbnb_bal = get_coin_balance(lp_address, WBNB_CA, 18)
-    if lp_wbnb_bal < CONFIG['MIN_LP_BNB']: return
+    
+    if lp_wbnb_bal < CONFIG['MIN_LP_BNB']:
+        print(f"   => 🚫 [TU CHOI] Pool qua beo bot! ({lp_wbnb_bal:.3f} BNB < Min {CONFIG['MIN_LP_BNB']} BNB). Suut!!", flush=True)
+        return
+
+    print(f"   => ✅ [DUYET] Thanh khoan tot ({lp_wbnb_bal:.3f} BNB). Dang cho check LP Lock (10 phut)...", flush=True)
 
     sec_info = None
     for attempt in range(40):
         sec_info = check_bsc_security(new_token)
-        if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10 and sec_info.get('is_lp_locked'): break
+        if sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10 and sec_info.get('is_lp_locked'):
+            print(f"   => 🔒 ĐÃ KHÓA LP HOP LE o lan check thu {attempt+1}! Chuan bi len song!", flush=True)
+            break
+        
+        # 🔥 LOG HIỂN THỊ TRÊN RENDER: Đếm ngược chờ LP
+        detail = sec_info['lock_detail'] if sec_info else "Chua co data"
+        print(f"   => [GoPlus] Chua dat chuan khoa >=95% (>7 ngay). Hien tai: {detail}. Doi 15s... (Lan {attempt+1}/40)", flush=True)
         time.sleep(15) 
 
     is_clean = sec_info and not sec_info['is_honeypot'] and sec_info['buy_tax'] < 10 and sec_info['sell_tax'] < 10 and sec_info.get('is_lp_locked')
+
+    if not is_clean:
+        print(f"   => 🗑 [LOAI BO] Het 10 phut Dev {coin_name} van khong khoa LP hoac la Honeypot.", flush=True)
 
     if CONFIG.get("NOTIFY_NEW_COIN", True) and is_clean:
         msg = f"🆕 <b>SIÊU PHẨM MỚI VỪA KHÓA THANH KHOẢN!</b>\n\n🪙 Tên Coin: <b>{coin_name}</b>\n📝 CA: <code>{new_token}</code>\n🏦 Thanh khoản gốc: <b>{lp_wbnb_bal:.2f} BNB</b>\n{format_bsc_security(sec_info)}\n"
@@ -197,6 +213,7 @@ def process_new_coin_async(new_token, lp_address):
     if is_clean:
         if len(AUTO_COINS) >= CONFIG['MAX_AUTO_COINS']: AUTO_COINS.pop(0)
         AUTO_COINS.append(init_coin_dict(coin_name, new_token, lp_address))
+        print(f"   => Da them {coin_name} vao ro AUTO quet ca map.", flush=True)
 
 @app.route('/webhook', methods=['POST'])
 def moralis_webhook():
@@ -209,7 +226,13 @@ def moralis_webhook():
                 if log.get('topic0') == '0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9':
                     t0, t1 = "0x" + log.get('topic1', '')[-40:], "0x" + log.get('topic2', '')[-40:]
                     new_token = t1.lower() if t0.lower() == WBNB_CA else t0.lower()
-                    if new_token in BLACKLIST_COINS or any(c['ca'] == new_token for c in AUTO_COINS + MANUAL_COINS): continue
+                    
+                    if new_token in BLACKLIST_COINS: continue
+                    if any(c['ca'] == new_token for c in AUTO_COINS + MANUAL_COINS): continue
+                    
+                    # 🔥 LOG HIỂN THỊ TRÊN RENDER: Có Webhook nổ
+                    print(f"\n📥 [WEBHOOK] Bat duoc coin moi tao: {new_token}. Kiem tra an ninh...", flush=True)
+                    
                     lp = "0x" + log.get('data', '')[26:66]
                     Thread(target=process_new_coin_async, args=(new_token, lp), daemon=True).start()
     except: pass
@@ -256,7 +279,8 @@ def execute_command(cmd):
                f"🏦 Min Pool đón lỏng: <b>>= {CONFIG['MIN_LP_BNB']} BNB</b>\n"
                f"🔒 Điều kiện an toàn: <b>Khóa >= 95% VÀ >= 7 Ngày</b>\n"
                f"⛔ CA cấm (Rác): <b>{len(BLACKLIST_COINS)}</b>\n"
-               f"🛡 Auto-Promote: <b>BẬT</b>\n")
+               f"🛡 Auto-Promote: <b>BẬT</b>\n"
+               f"<i>* Các thông số Soi ví đã được cài độc lập cho từng coin.</i>")
         send_telegram_alert(msg)
     elif cmd == 'list':
         msg = f"📋 <b>DANH SÁCH & CẤU HÌNH</b>\n\n🤖 <b>AUTO ({len(AUTO_COINS)}/{CONFIG['MAX_AUTO_COINS']})</b>\n"
@@ -308,7 +332,6 @@ def process_update(item):
             
             if data.startswith("open_cfg_"):
                 ca_short = data.split("_")[2]
-                # 🔥 FIX ÉP LOWERCASE LÚC SO SÁNH
                 coin = next((c for c in all_c if c['ca'].lower().startswith(ca_short.lower())), None)
                 if coin: send_coin_config_menu(coin)
                 return
@@ -481,6 +504,10 @@ def run_bot():
                         coin['last_scan_time'] = time.time()
                         
                         ca, lp = coin["ca"].lower(), coin["lp"].lower()
+                        
+                        # 🔥 LOG HIỂN THỊ TRÊN RENDER: Check ví gom
+                        print(f"\n--- Dang soi bot xem co ca map gom {coin['name']} (CA: {ca[:6]}...) ---", flush=True)
+
                         token_price_bnb, token_decimals = 0, 18
                         price_res = requests.get(f"https://deep-index.moralis.io/api/v2.2/erc20/{ca}/price?chain=bsc", headers=get_current_headers(), timeout=10)
                         if price_res.status_code == 200:
@@ -504,6 +531,10 @@ def run_bot():
                             max_ts = max([tx.get('block_timestamp', '') for tx in new_txs])
                             if max_ts > coin['last_fetch_timestamp']: coin['last_fetch_timestamp'] = max_ts
                             coin['tx_cache'].extend(new_txs)
+                            # 🔥 LOG HIỂN THỊ TRÊN RENDER
+                            print(f"   => Keo Delta: {len(new_txs)} lenh moi ve Sổ tay.", flush=True)
+                        else:
+                            print(f"   => Khong co lenh moi.", flush=True)
 
                         time_ago = datetime.now(timezone.utc) - timedelta(hours=time_frame)
                         valid_cache = []
@@ -512,6 +543,10 @@ def run_bot():
                                 if datetime.strptime(tx.get('block_timestamp', '')[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc) >= time_ago: valid_cache.append(tx)
                             except: pass
                         coin['tx_cache'] = valid_cache
+                        
+                        # 🔥 LOG HIỂN THỊ TRÊN RENDER
+                        print(f"   => Do dai So tay hien tai (sau khi cat tia): {len(valid_cache)} lenh.", flush=True)
+
                         sorted_txs = sorted(valid_cache, key=lambda x: x.get('block_timestamp', ''))
                         
                         wallet_receipts = {} 
@@ -563,6 +598,8 @@ def run_bot():
                             MANUAL_COINS.append(coin) 
                             try: AUTO_COINS.remove(coin)
                             except: pass
+                            # 🔥 LOG HIỂN THỊ TRÊN RENDER
+                            print(f"   => [THANG HANG] {coin['name']} da duoc cap The Xanh vao ro Thu Cong/VIP!", flush=True)
 
                     except Exception as e: print(f"   ⚠️ LOI: {e}", flush=True)
                     time.sleep(2) 
